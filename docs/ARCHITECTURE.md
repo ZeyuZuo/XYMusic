@@ -2,19 +2,28 @@
 
 产品范围、交互和验收以 [v0.1 开发基线](V0.1.md) 为准。界面遵循 Material 3，底部四栏，设置页承载登录。
 
+## 过渡方案与最终目标
+
+最终产品安装 APK 即可使用，不要求用户部署服务或配置 API 地址。开发阶段先通过 KuGouMusicApi 验证登录和音乐业务，后续按设备注册、登录与续期、搜索、播放的顺序，将必需的请求签名、加密和接口实现迁移到 Kotlin，直连酷狗官方服务。
+
+现有 Compose 页面消费 AuthViewModel 的状态，HTTP 与 JSON 处理集中在数据层。当前 AuthRepository 仍依赖中转服务的 Cookie 协议；迁移时需替换这部分实现，并调整会话恢复和校验，不能仅替换 baseUrl。保持界面交互和领域行为稳定，不提前搭建多后端框架；迁移上游代码时按 THIRD_PARTY.md 记录许可与来源。
+
 ## 边界
 
 ```text
-Compose 页面 → ViewModel → Repository → KuGouApi → 独立 Node.js API
+开发阶段：Compose 页面 → ViewModel → Repository → KuGouApi → KuGouMusicApi → 酷狗
+最终目标：Compose 页面 → ViewModel → Repository → Kotlin 接口实现 → 酷狗
                     ↓
               MediaController → PlaybackService → ExoPlayer → 音频 CDN
 ```
 
-当前只有页面骨架、设置存储、HTTP 传输接口、歌曲领域模型和播放服务。ViewModel、Repository、MediaController 与实际响应映射留待首个功能链路实现，不用无效实现冒充可用功能。
+当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；尚待真实账号联调。其余音乐页面、歌曲模型和播放服务仍为骨架，MediaController 与搜索播放映射尚未接通。
 
 `android/app/src/main/java/io/github/xiangyuplayer/`：
 
 - `ui/`：Compose 页面与主题。
+- `data/auth/`：登录仓库、响应校验与加密会话存储。
+- `ui/auth/`：手机号登录、账号卡片及会话状态 ViewModel。
 - `data/settings/`：DataStore 设置存储。
 - `data/remote/`：API 地址校验、Retrofit 接口和按客户端隔离的内存 CookieJar。
 - `domain/model/`：不依赖 HTTP JSON 的歌曲模型。
@@ -31,12 +40,12 @@ Compose 页面 → ViewModel → Repository → KuGouApi → 独立 Node.js API
 5. **云端音乐库**：我喜欢、自建及收藏歌单以酷狗账号数据为准；实现云端读写和本地缓存，不创建独立本地歌单体系。持久缓存确有需要时引入 Room。
 6. **详情与交付**：歌曲信息、评论/回复浏览、音质设置及 Material 3 体验验收。复杂动效后置。
 
-业务开发前先将设置移至底部第四栏，并在设置页顶部建立账号入口。详细阶段完成条件见 v0.1 文档。
+设置已移至底部第四栏，并在设置页顶部建立账号入口。详细阶段完成条件见 v0.1 文档。
 
 ## 明确限制
 
-- 当前的 CookieJar 只保存在内存，不能代替持久登录；切换 API 地址必须创建新的客户端，退出登录必须清空会话。不要把 API 客户端用于音频 CDN。
-- HTTP 接口返回 JsonObject 只是传输边界，HTTP 200 不代表业务成功。未来 Repository 需要解析 status/error_code、检查必填字段、区分认证失败和空结果。
+- CookieJar 在内存中维护请求 Cookie，登录仓库加密持久化会话；切换 API 地址创建新客户端，退出清除持久及内存会话。不与音频 CDN 共享客户端。
+- HTTP 接口返回 JsonObject 只是传输边界，HTTP 200 不代表业务成功。登录 Repository 已检查 status 和必填字段；其他业务仍需各自映射与错误处理。
 - `/song/url/new` 文档提示加密音频问题，初期只接 `/song/url`，实际验证格式后再扩展。
 - 发布版禁止 HTTP；调试版允许模拟器和局域网开发。API 地址存储不包含账号信息。
 - Media3 服务已有媒体会话、音频焦点与耳机断开处理；还没有界面控制器、播放 URL 解析、队列持久化或自动恢复。

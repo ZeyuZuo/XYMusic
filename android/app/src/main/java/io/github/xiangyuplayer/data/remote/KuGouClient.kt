@@ -8,12 +8,14 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 /** Create a fresh instance when changing the endpoint; explicitly clear on logout. */
 class KuGouClient(baseUrl: String) {
-    private val session = SessionCookieJar()
+    val session = SessionCookieJar()
     private val http = OkHttpClient.Builder()
         .cookieJar(session)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(45, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
+        .followRedirects(false)
         .followSslRedirects(false)
         .build()
 

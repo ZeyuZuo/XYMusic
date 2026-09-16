@@ -25,6 +25,22 @@ class SessionCookieJar : CookieJar {
     }
 
     @Synchronized
+    fun snapshot(): List<String> = cookies.filter { it.expiresAt > System.currentTimeMillis() }
+        .map { it.toString() }
+
+    @Synchronized
+    fun restore(url: HttpUrl, values: List<String>) {
+        clear()
+        saveFromResponse(url, values.mapNotNull { Cookie.parse(url, it) }.filter { it.matches(url) })
+    }
+
+    @Synchronized
+    fun put(url: HttpUrl, name: String, value: String) {
+        saveFromResponse(url, listOf(Cookie.Builder().name(name).value(value)
+            .hostOnlyDomain(url.host).path("/").apply { if (url.isHttps) secure() }.build()))
+    }
+
+    @Synchronized
     fun clear() {
         cookies.clear()
     }
