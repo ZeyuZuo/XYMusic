@@ -98,7 +98,7 @@ fun XiangyuApp(settings: SettingsStore) {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { insets ->
         if (destination == Destination.Settings) {
-            SettingsContent(authState, Modifier.padding(insets), { loginVisible = true }, auth::logout, auth::verify) {
+            SettingsContent(authState, Modifier.padding(insets), { loginVisible = true }, auth::logout, auth::verify, auth::refreshProfile) {
                 EndpointSettings(savedEndpoint, settings, snackbar)
             }
             return@Scaffold

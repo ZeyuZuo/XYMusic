@@ -5,6 +5,7 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.xiangyuplayer.R
+import io.github.xiangyuplayer.data.auth.AccountProfile
 import io.github.xiangyuplayer.data.auth.Account
 import io.github.xiangyuplayer.data.auth.AuthDiagnostic
 import io.github.xiangyuplayer.data.auth.AuthFailure
@@ -32,6 +33,12 @@ data class AuthState(
     val userId: String = "",
     val remaining: Int = 0,
     val account: Account? = null,
+    val profile: AccountProfile? = null,
+    val profileLoading: Boolean = false,
+    val profileFailed: Boolean = false,
+    val profileDiagnostic: AuthDiagnostic? = null,
+    val profileRevision: Int = 0,
+    val sessionGeneration: Int = 0,
     val verified: Boolean = false,
     val message: Int? = null,
     val diagnostic: AuthDiagnostic? = null,
@@ -44,16 +51,19 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private var repository: AuthRepository? = null
     private var action: Job? = null
     private var countdown: Job? = null
+    private var profileJob: Job? = null
+    private var sessionGeneration = 0
 
     init {
         viewModelScope.launch {
             SettingsStore(application).apiBaseUrl.collect { endpoint ->
                 mutable.update { it.copy(ready = false) }
                 action?.cancelAndJoin()
+                profileJob?.cancelAndJoin()
                 countdown?.cancel()
                 repository?.cancel()
                 repository = null
-                mutable.value = AuthState(configured = endpoint.isNotBlank())
+                mutable.value = AuthState(configured = endpoint.isNotBlank(), sessionGeneration = ++sessionGeneration)
                 try {
                     if (endpoint.isBlank()) withContext(Dispatchers.IO) { store.clear() }
                     else {
@@ -85,7 +95,11 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         if (!mutable.value.ready || mutable.value.busy) return
         mutable.update { it.copy(busy = true, message = null, diagnostic = null) }
         action = viewModelScope.launch {
-            try { block(repo) }
+            try {
+                profileJob?.cancelAndJoin()
+                mutable.update { it.copy(profileLoading = false) }
+                block(repo)
+            }
             catch (error: Exception) {
                 if (error is CancellationException) throw error
                 val message = when (error) {
@@ -99,7 +113,8 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                     is java.io.IOException -> R.string.login_network_failed
                     else -> R.string.login_failed
                 }
-                mutable.update { it.copy(message = message, diagnostic = (error as? AuthFailure)?.diagnostic, account = if (message == R.string.session_expired) null else it.account) }
+                mutable.update { it.copy(message = message, diagnostic = (error as? AuthFailure)?.diagnostic, account = if (message == R.string.session_expired) null else it.account,
+                    profile = if (message == R.string.session_expired) null else it.profile) }
             } finally { mutable.update { it.copy(busy = false) } }
         }
     }
@@ -135,6 +150,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 throw error
             }
             mutable.update { it.copy(account = account, verified = true, phone = "", code = "", userId = "") }
+            loadProfile(repo)
         }
     }
 
@@ -144,13 +160,34 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             mutable.update { it.copy(verified = false) }
             val updated = withContext(Dispatchers.IO) { repo.verify(account) }
             mutable.update { it.copy(account = updated, verified = true) }
+            loadProfile(repo)
+        }
+    }
+
+    fun refreshProfile() {
+        val repo = repository ?: return
+        if (mutable.value.account == null || mutable.value.busy || mutable.value.profileLoading) return
+        loadProfile(repo)
+    }
+
+    private fun loadProfile(repo: AuthRepository) {
+        mutable.update { it.copy(profileLoading = true, profileFailed = false, profileDiagnostic = null) }
+        profileJob = viewModelScope.launch {
+            try {
+                val profile = withContext(Dispatchers.IO) { repo.profile() }
+                mutable.update { it.copy(profile = profile, profileLoading = false, profileRevision = it.profileRevision + 1) }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                mutable.update { it.copy(profileLoading = false, profileFailed = true,
+                    profileDiagnostic = (error as? AuthFailure)?.diagnostic) }
+            }
         }
     }
 
     fun logout() = runAction { repo ->
         withContext(Dispatchers.IO) { repo.clear() }
         countdown?.cancel()
-        mutable.value = AuthState(ready = true, configured = true)
+        mutable.value = AuthState(ready = true, configured = true, sessionGeneration = ++sessionGeneration)
     }
 
     fun leaveLogin() {

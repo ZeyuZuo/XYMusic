@@ -23,6 +23,9 @@ interface KuGouApi {
     @POST("user/verify")
     suspend fun verifyUser(@Body body: Map<String, String> = emptyMap()): JsonObject
 
+    @POST("user/detail")
+    suspend fun userDetail(@Body body: Map<String, String> = emptyMap()): JsonObject
+
     @GET("search")
     suspend fun searchSongs(
         @Query("keywords") keywords: String,

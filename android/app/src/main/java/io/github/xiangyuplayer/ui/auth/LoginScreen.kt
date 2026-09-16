@@ -60,7 +60,7 @@ fun LoginScreen(state: AuthState, model: AuthViewModel, onBack: () -> Unit) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            AuthMessage(state)
+            AuthMessage(state.message, state.diagnostic)
             Button(onClick = model::login,
                 enabled = state.ready && state.configured && !state.busy && Regex("1[3-9][0-9]{9}").matches(state.phone) && state.code.length in 4..8,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {

@@ -79,4 +79,18 @@
     <string name="auth_diagnostic">失败阶段：%1$s\n状态：%2$s · 错误码：%3$s</string>
     <string name="auth_http_diagnostic">失败阶段：%1$s\nHTTP 状态码：%2$d</string>
     <string name="auth_code_missing">未提供</string>
+    <string name="auth_stage_profile">账号资料</string>
+    <string name="profile_fans">粉丝</string>
+    <string name="profile_follows">关注</string>
+    <string name="profile_visitors">访客</string>
+    <string name="profile_loading">正在加载账号资料…</string>
+    <string name="profile_failed">账号资料加载失败，登录状态已保留。已有数量可能不是最新数据。</string>
+    <string name="avatar_failed">头像加载失败，请稍后重试。</string>
+    <string name="profile_unknown">—</string>
+    <string name="profile_unavailable">暂无数据</string>
+    <string name="profile_count_description">%1$s：%2$s</string>
+    <string name="retry_profile">重新加载</string>
+    <string name="refresh_profile">刷新账号资料</string>
+    <string name="account_avatar">账号头像</string>
+    <string name="avatar_placeholder">默认账号图标</string>
 </resources>

@@ -167,6 +167,29 @@ class AuthRepositoryTest {
         assertEquals(AuthDiagnostic(AuthStage.LOGIN), AuthResponse.diagnostic(body, AuthStage.LOGIN))
     }
 
+    @Test fun profileUsesOwnSessionWithoutReauthenticating() = runBlocking {
+        seedSession()
+        val account = repo.restore()!!
+        enqueue("""{"status":1,"data":{"pic":"https://images.example/avatar.jpg","fans":1,"follows":2,"visitors":3}}""")
+        assertEquals(3L, repo.profile().visitors)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/user/detail", request.path)
+        assertTrue(request.getHeader("Cookie")!!.contains("token=test-token"))
+        assertEquals(account, repo.restore())
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test fun profileFailurePreservesLogin() = runBlocking {
+        seedSession()
+        repo.restore()
+        enqueue("""{"status":0,"error_code":999}""")
+        try { repo.profile(); fail("Must reject") }
+        catch (error: AuthFailure) { assertEquals(AuthStage.PROFILE, error.diagnostic!!.stage) }
+        assertNotNull(store.value)
+        assertEquals(1, server.requestCount)
+    }
+
     private fun enqueue(body: String) { server.enqueue(MockResponse().setHeader("Content-Type", "application/json").setBody(body)) }
     private fun seedSession() {
         store.value = SavedSession(server.url("/").toString(), "123", "Test account", listOf("token=test-token; Path=/", "userid=123; Path=/", "dfid=test-device; Path=/"))

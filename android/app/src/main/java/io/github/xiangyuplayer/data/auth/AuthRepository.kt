@@ -5,7 +5,7 @@ import io.github.xiangyuplayer.BuildConfig
 import io.github.xiangyuplayer.data.remote.ApiEndpoint
 import io.github.xiangyuplayer.data.remote.KuGouClient
 
-enum class AuthStage { DEVICE, SMS, LOGIN, VERIFY, REFRESH }
+enum class AuthStage { DEVICE, SMS, LOGIN, VERIFY, REFRESH, PROFILE }
 
 // Only bounded numeric protocol codes; never retain upstream messages, bodies or credentials.
 data class AuthDiagnostic(val stage: AuthStage, val status: String? = null, val code: String? = null, val httpStatus: Int? = null)
@@ -120,6 +120,10 @@ class AuthRepository(val endpoint: String, private val store: SessionPersistence
     }
 
     private fun persist(account: Account) = store.save(SavedSession(endpoint, account.userId, account.nickname, client.session.snapshot()))
+
+    suspend fun profile(): AccountProfile = request(AuthStage.PROFILE, { client.api.userDetail() }) {
+        ProfileResponse.parse(it)
+    }
 
     suspend fun verify(account: Account): Account {
         val data = request(AuthStage.VERIFY, { client.api.verifyUser() }) {

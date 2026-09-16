@@ -13,21 +13,23 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.xiangyuplayer.R
+import io.github.xiangyuplayer.data.auth.AuthDiagnostic
 import io.github.xiangyuplayer.data.auth.AuthStage
 
 @Composable
-fun AuthMessage(state: AuthState) {
-    val message = state.message ?: return
+fun AuthMessage(message: Int?, diagnostic: AuthDiagnostic? = null) {
+    if (message == null) return
     Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(message), style = MaterialTheme.typography.bodyMedium,
             color = if (message == R.string.code_sent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-        state.diagnostic?.let { diagnostic ->
+        diagnostic?.let { diagnostic ->
             val stage = stringResource(when (diagnostic.stage) {
                 AuthStage.DEVICE -> R.string.auth_stage_device
                 AuthStage.SMS -> R.string.auth_stage_sms
                 AuthStage.LOGIN -> R.string.auth_stage_login
                 AuthStage.VERIFY -> R.string.auth_stage_verify
                 AuthStage.REFRESH -> R.string.auth_stage_refresh
+                AuthStage.PROFILE -> R.string.auth_stage_profile
             })
             SelectionContainer {
                 Text(

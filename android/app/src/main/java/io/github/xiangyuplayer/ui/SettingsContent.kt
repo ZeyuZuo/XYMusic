@@ -15,6 +15,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.xiangyuplayer.BuildConfig
 import io.github.xiangyuplayer.R
+import io.github.xiangyuplayer.data.auth.AccountProfile
 import io.github.xiangyuplayer.data.auth.Account
 import io.github.xiangyuplayer.ui.auth.AccountCard
 import io.github.xiangyuplayer.ui.auth.AuthState
@@ -27,12 +28,13 @@ fun SettingsContent(
     onLogin: () -> Unit,
     onLogout: () -> Unit,
     onVerify: () -> Unit,
+    onRefreshProfile: () -> Unit,
     endpointEditor: @Composable () -> Unit,
 ) {
     var showEndpoint by remember { mutableStateOf(false) }
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        item { AccountCard(state, onLogin, onLogout, onVerify) }
+        item { AccountCard(state, onLogin, onLogout, onVerify, onRefreshProfile) }
         item {
             SettingsGroup(stringResource(R.string.preferences_group)) {
                 SettingsInfo(Icons.Default.Settings, stringResource(R.string.appearance), stringResource(R.string.follow_system))
@@ -108,8 +110,9 @@ fun AccountSettingsPreview() {
             }
         }) { padding ->
             SettingsContent(
-                state = AuthState(ready = true, configured = true, verified = true, account = Account("100000", "相遇听众")),
-                modifier = Modifier.padding(padding), onLogin = {}, onLogout = {}, onVerify = {},
+                state = AuthState(ready = true, configured = true, verified = true, account = Account("100000", "相遇听众"),
+                    profile = AccountProfile(null, 128, 36, 2048)),
+                modifier = Modifier.padding(padding), onLogin = {}, onLogout = {}, onVerify = {}, onRefreshProfile = {},
                 endpointEditor = { Text(stringResource(R.string.api_description)) },
             )
         }
