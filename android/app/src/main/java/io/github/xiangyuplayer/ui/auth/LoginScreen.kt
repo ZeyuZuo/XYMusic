@@ -60,7 +60,7 @@ fun LoginScreen(state: AuthState, model: AuthViewModel, onBack: () -> Unit) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            state.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.primary) }
+            AuthMessage(state)
             Button(onClick = model::login,
                 enabled = state.ready && state.configured && !state.busy && Regex("1[3-9][0-9]{9}").matches(state.phone) && state.code.length in 4..8,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
@@ -70,37 +70,4 @@ fun LoginScreen(state: AuthState, model: AuthViewModel, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-}
-
-@Composable
-fun AccountCard(state: AuthState, onLogin: () -> Unit, onLogout: () -> Unit, onVerify: () -> Unit) {
-    var confirmLogout by remember { mutableStateOf(false) }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Default.Person, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
-            val account = state.account
-            Text(if (account == null) stringResource(R.string.login_account) else account.nickname.ifBlank { stringResource(R.string.kugou_account) },
-                style = MaterialTheme.typography.titleLarge)
-            if (account != null) Text(stringResource(R.string.account_number, account.userId))
-            Text(stringResource(when {
-                !state.ready -> R.string.session_loading
-                !state.configured -> R.string.configure_service_first
-                account == null -> R.string.account_description
-                state.verified -> R.string.account_connected
-                else -> R.string.account_unverified
-            }), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            state.message?.let { Text(stringResource(it)) }
-            if (account == null) Button(onClick = onLogin, enabled = state.ready && !state.busy) {
-                Text(stringResource(R.string.phone_login))
-            } else {
-                TextButton(onClick = onVerify, enabled = !state.busy) { Text(stringResource(R.string.check_session)) }
-                TextButton(onClick = { confirmLogout = true }, enabled = !state.busy) { Text(stringResource(R.string.logout)) }
-            }
-        }
-    }
-    if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false },
-        title = { Text(stringResource(R.string.logout)) }, text = { Text(stringResource(R.string.logout_detail)) },
-        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text(stringResource(R.string.logout)) } },
-        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(stringResource(R.string.cancel)) } })
 }

@@ -77,7 +77,11 @@ class AuthRepositoryTest {
         val account = repo.restore()!!
         server.enqueue(MockResponse().setResponseCode(503))
         try { repo.verify(account); fail("Must propagate HTTP error") }
-        catch (_: retrofit2.HttpException) { }
+        catch (error: AuthFailure) {
+            assertEquals(AuthFailure.Reason.HTTP, error.reason)
+            assertEquals(AuthStage.VERIFY, error.diagnostic!!.stage)
+            assertEquals(503, error.diagnostic!!.httpStatus)
+        }
         assertEquals(1, server.requestCount)
         assertNotNull(store.value)
     }
@@ -115,6 +119,52 @@ class AuthRepositoryTest {
             try { AuthResponse.account(JsonParser.parseString(body).asJsonObject); fail("Must reject incomplete response") }
             catch (_: AuthFailure) { }
         }
+    }
+
+    @Test fun rejectedLoginRetainsOnlySafeStageAndCodes() = runBlocking {
+        enqueue("""{"status":1,"data":{"dfid":"test-device"}}""")
+        enqueue("""{"status":0,"error_code":20028,"msg":"test-private-message","ssaCode":"test-private-event","token":"test-private-token"}""")
+        try { repo.login("test-mobile", "test-code", ""); fail("Must reject") }
+        catch (error: AuthFailure) {
+            assertEquals(AuthFailure.Reason.REJECTED, error.reason)
+            assertEquals(AuthDiagnostic(AuthStage.LOGIN, "0", "20028"), error.diagnostic)
+            assertNull(error.message)
+            assertNull(error.cause)
+            assertFalse(error.diagnostic.toString().contains("test-private"))
+        }
+        assertNull(store.value)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test fun deviceFailureIsNotReportedAsCodeRejection() = runBlocking {
+        enqueue("""{"status":0,"error_code":999}""")
+        try { repo.login("test-mobile", "test-code", ""); fail("Must reject") }
+        catch (error: AuthFailure) {
+            assertEquals(AuthDiagnostic(AuthStage.DEVICE, "0", "999"), error.diagnostic)
+        }
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test fun smsFailureReportsSmsStage() = runBlocking {
+        enqueue("""{"status":1,"data":{"dfid":"test-device"}}""")
+        enqueue("""{"status":0,"error_code":998}""")
+        try { repo.sendCode("test-mobile"); fail("Must reject") }
+        catch (error: AuthFailure) { assertEquals(AuthStage.SMS, error.diagnostic!!.stage) }
+    }
+
+    @Test fun missingStatusIsMalformedNotAccountRejection() = runBlocking {
+        enqueue("""{"status":1,"data":{"dfid":"test-device"}}""")
+        enqueue("""{"error_code":997}""")
+        try { repo.login("test-mobile", "test-code", ""); fail("Must reject") }
+        catch (error: AuthFailure) {
+            assertEquals(AuthFailure.Reason.RESPONSE, error.reason)
+            assertEquals(AuthDiagnostic(AuthStage.LOGIN, code = "997"), error.diagnostic)
+        }
+    }
+
+    @Test fun diagnosticsRejectUnboundedOrNonnumericValues() {
+        val body = JsonParser.parseString("""{"status":"test-private","error_code":"12345678901","msg":"test-private"}""").asJsonObject
+        assertEquals(AuthDiagnostic(AuthStage.LOGIN), AuthResponse.diagnostic(body, AuthStage.LOGIN))
     }
 
     private fun enqueue(body: String) { server.enqueue(MockResponse().setHeader("Content-Type", "application/json").setBody(body)) }

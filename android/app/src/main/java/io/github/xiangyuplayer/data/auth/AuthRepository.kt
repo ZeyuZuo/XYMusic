@@ -5,8 +5,13 @@ import io.github.xiangyuplayer.BuildConfig
 import io.github.xiangyuplayer.data.remote.ApiEndpoint
 import io.github.xiangyuplayer.data.remote.KuGouClient
 
-class AuthFailure(val reason: Reason) : Exception() {
-    enum class Reason { REJECTED, RESPONSE, EXPIRED }
+enum class AuthStage { DEVICE, SMS, LOGIN, VERIFY, REFRESH }
+
+// Only bounded numeric protocol codes; never retain upstream messages, bodies or credentials.
+data class AuthDiagnostic(val stage: AuthStage, val status: String? = null, val code: String? = null, val httpStatus: Int? = null)
+
+class AuthFailure(val reason: Reason, val diagnostic: AuthDiagnostic? = null) : Exception() {
+    enum class Reason { REJECTED, RESPONSE, EXPIRED, HTTP, NETWORK }
 }
 
 data class Account(val userId: String, val nickname: String)
@@ -16,8 +21,15 @@ object AuthResponse {
     fun text(value: JsonObject, name: String): String? = value.get(name)
         ?.takeIf { it.isJsonPrimitive }?.asString?.takeIf { it.isNotBlank() && it != "undefined" && it != "null" }
 
+    fun diagnostic(value: JsonObject, stage: AuthStage): AuthDiagnostic {
+        fun numeric(name: String) = text(value, name)?.takeIf { Regex("-?[0-9]{1,7}").matches(it) }
+        return AuthDiagnostic(stage, numeric("status"), numeric("error_code"))
+    }
+
     fun requireSuccess(value: JsonObject) {
-        if (text(value, "status") != "1") throw AuthFailure(AuthFailure.Reason.REJECTED)
+        val status = text(value, "status")
+        if (status == null || !Regex("-?[0-9]{1,7}").matches(status)) throw AuthFailure(AuthFailure.Reason.RESPONSE)
+        if (status != "1") throw AuthFailure(AuthFailure.Reason.REJECTED)
     }
 
     fun data(value: JsonObject): JsonObject = value.get("data")?.takeIf { it.isJsonObject }?.asJsonObject
@@ -39,6 +51,23 @@ class AuthRepository(val endpoint: String, private val store: SessionPersistence
     private val url = ApiEndpoint.parse(endpoint, BuildConfig.DEBUG)
     private var deviceReady = false
 
+    private suspend fun <T> request(stage: AuthStage, call: suspend () -> JsonObject, parse: (JsonObject) -> T): T {
+        val result = try { call() }
+        catch (error: retrofit2.HttpException) {
+            throw AuthFailure(AuthFailure.Reason.HTTP, AuthDiagnostic(stage, httpStatus = error.code()))
+        } catch (error: com.google.gson.JsonParseException) {
+            throw AuthFailure(AuthFailure.Reason.RESPONSE, AuthDiagnostic(stage))
+        } catch (error: java.io.IOException) {
+            throw AuthFailure(AuthFailure.Reason.NETWORK, AuthDiagnostic(stage))
+        }
+        return try {
+            AuthResponse.requireSuccess(result)
+            parse(result)
+        } catch (error: AuthFailure) {
+            throw AuthFailure(error.reason, AuthResponse.diagnostic(result, stage))
+        }
+    }
+
     fun cancel() = client.clearSession()
     fun clear() { client.clearSession(); store.clear(); deviceReady = false }
 
@@ -57,10 +86,9 @@ class AuthRepository(val endpoint: String, private val store: SessionPersistence
 
     private suspend fun ensureDevice() {
         if (!deviceReady) {
-            val response = client.api.registerDevice()
-            AuthResponse.requireSuccess(response)
-            val dfid = AuthResponse.text(AuthResponse.data(response), "dfid")
-                ?: throw AuthFailure(AuthFailure.Reason.RESPONSE)
+            val dfid = request(AuthStage.DEVICE, { client.api.registerDevice() }) { response ->
+                AuthResponse.text(AuthResponse.data(response), "dfid") ?: throw AuthFailure(AuthFailure.Reason.RESPONSE)
+            }
             client.session.put(url, "dfid", dfid)
             deviceReady = true
         }
@@ -68,15 +96,16 @@ class AuthRepository(val endpoint: String, private val store: SessionPersistence
 
     suspend fun sendCode(phone: String) {
         ensureDevice()
-        AuthResponse.requireSuccess(client.api.sendCaptcha(mapOf("mobile" to phone)))
+        request(AuthStage.SMS, { client.api.sendCaptcha(mapOf("mobile" to phone)) }) { }
     }
 
     suspend fun login(phone: String, code: String, userId: String): Account {
         ensureDevice()
         val body = mutableMapOf("mobile" to phone, "code" to code)
         if (userId.isNotBlank()) body["userid"] = userId
-        val result = client.api.loginCellphone(body)
-        val account = AuthResponse.account(result)
+        val (result, account) = request(AuthStage.LOGIN, { client.api.loginCellphone(body) }) {
+            it to AuthResponse.account(it)
+        }
         applyCredentials(result, account)
         return account
     }
@@ -93,9 +122,14 @@ class AuthRepository(val endpoint: String, private val store: SessionPersistence
     private fun persist(account: Account) = store.save(SavedSession(endpoint, account.userId, account.nickname, client.session.snapshot()))
 
     suspend fun verify(account: Account): Account {
-        val result = client.api.verifyUser()
-        AuthResponse.requireSuccess(result)
-        val data = AuthResponse.data(result)
+        val data = request(AuthStage.VERIFY, { client.api.verifyUser() }) {
+            val data = AuthResponse.data(it)
+            val valid = AuthResponse.text(data, "valid")
+            if (valid !in listOf("0", "1") || (valid == "1" && AuthResponse.text(data, "auth") == null)) {
+                throw AuthFailure(AuthFailure.Reason.RESPONSE)
+            }
+            data
+        }
         when (AuthResponse.text(data, "valid")) {
             "1" -> {
                 val auth = AuthResponse.text(data, "auth") ?: throw AuthFailure(AuthFailure.Reason.RESPONSE)
@@ -104,12 +138,13 @@ class AuthRepository(val endpoint: String, private val store: SessionPersistence
                 return account
             }
             "0" -> {
-                val refreshed = client.api.refreshLogin()
-                if (AuthResponse.text(refreshed, "status") != "1") {
+                val (refreshed, updated) = try {
+                    request(AuthStage.REFRESH, { client.api.refreshLogin() }) { it to AuthResponse.account(it) }
+                } catch (error: AuthFailure) {
+                    if (error.reason != AuthFailure.Reason.REJECTED) throw error
                     clear()
-                    throw AuthFailure(AuthFailure.Reason.EXPIRED)
+                    throw AuthFailure(AuthFailure.Reason.EXPIRED, error.diagnostic)
                 }
-                val updated = AuthResponse.account(refreshed)
                 if (updated.userId != account.userId) {
                     clear()
                     throw AuthFailure(AuthFailure.Reason.EXPIRED)

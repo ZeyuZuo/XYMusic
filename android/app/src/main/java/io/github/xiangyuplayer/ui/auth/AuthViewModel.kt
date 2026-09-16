@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.auth.Account
+import io.github.xiangyuplayer.data.auth.AuthDiagnostic
 import io.github.xiangyuplayer.data.auth.AuthFailure
 import io.github.xiangyuplayer.data.auth.AuthRepository
 import io.github.xiangyuplayer.data.auth.SessionStore
@@ -33,6 +34,7 @@ data class AuthState(
     val account: Account? = null,
     val verified: Boolean = false,
     val message: Int? = null,
+    val diagnostic: AuthDiagnostic? = null,
 )
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
@@ -73,15 +75,15 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun phone(value: String) {
         if (mutable.value.busy) return
-        mutable.update { it.copy(phone = value.filter { c -> c in '0'..'9' }.take(11), code = "", userId = "", message = null) }
+        mutable.update { it.copy(phone = value.filter { c -> c in '0'..'9' }.take(11), code = "", userId = "", message = null, diagnostic = null) }
     }
-    fun code(value: String) { mutable.update { it.copy(code = value.filter { c -> c in '0'..'9' }.take(8), message = null) } }
+    fun code(value: String) { mutable.update { it.copy(code = value.filter { c -> c in '0'..'9' }.take(8), message = null, diagnostic = null) } }
     fun userId(value: String) { mutable.update { it.copy(userId = value.filter { c -> c in '0'..'9' }.take(20)) } }
 
     private fun runAction(block: suspend (AuthRepository) -> Unit) {
         val repo = repository ?: return
         if (!mutable.value.ready || mutable.value.busy) return
-        mutable.update { it.copy(busy = true, message = null) }
+        mutable.update { it.copy(busy = true, message = null, diagnostic = null) }
         action = viewModelScope.launch {
             try { block(repo) }
             catch (error: Exception) {
@@ -91,11 +93,13 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                         AuthFailure.Reason.EXPIRED -> R.string.session_expired
                         AuthFailure.Reason.RESPONSE -> R.string.login_response_unknown
                         AuthFailure.Reason.REJECTED -> R.string.login_rejected
+                        AuthFailure.Reason.HTTP -> R.string.login_http_failed
+                        AuthFailure.Reason.NETWORK -> R.string.login_network_failed
                     }
                     is java.io.IOException -> R.string.login_network_failed
                     else -> R.string.login_failed
                 }
-                mutable.update { it.copy(message = message, account = if (message == R.string.session_expired) null else it.account) }
+                mutable.update { it.copy(message = message, diagnostic = (error as? AuthFailure)?.diagnostic, account = if (message == R.string.session_expired) null else it.account) }
             } finally { mutable.update { it.copy(busy = false) } }
         }
     }
@@ -151,7 +155,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun leaveLogin() {
         action?.cancel()
-        mutable.update { it.copy(phone = "", code = "", userId = "", message = null) }
+        mutable.update { it.copy(phone = "", code = "", userId = "", message = null, diagnostic = null) }
     }
 
     override fun onCleared() { repository?.cancel() }

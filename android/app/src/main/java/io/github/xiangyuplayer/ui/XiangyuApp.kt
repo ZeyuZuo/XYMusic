@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.xiangyuplayer.ui.auth.AuthViewModel
-import io.github.xiangyuplayer.ui.auth.AccountCard
 import io.github.xiangyuplayer.ui.auth.LoginScreen
 import io.github.xiangyuplayer.BuildConfig
 import io.github.xiangyuplayer.R
@@ -81,7 +80,7 @@ fun XiangyuApp(settings: SettingsStore) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
+                title = { Text(stringResource(if (destination == Destination.Settings) R.string.settings else R.string.app_name)) },
             )
         },
         bottomBar = {
@@ -98,6 +97,12 @@ fun XiangyuApp(settings: SettingsStore) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { insets ->
+        if (destination == Destination.Settings) {
+            SettingsContent(authState, Modifier.padding(insets), { loginVisible = true }, auth::logout, auth::verify) {
+                EndpointSettings(savedEndpoint, settings, snackbar)
+            }
+            return@Scaffold
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(insets),
             contentPadding = PaddingValues(24.dp),
@@ -127,23 +132,9 @@ fun XiangyuApp(settings: SettingsStore) {
                     item { Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineMedium) }
                     item { EmptyCard(Icons.Default.Favorite, R.string.no_library, R.string.no_library_detail) }
                 }
-                Destination.Settings -> {
-                    item { Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineMedium) }
-                    item { AccountCard(authState, { loginVisible = true }, auth::logout, auth::verify) }
-                    item { EndpointSettings(savedEndpoint, settings, snackbar) }
-                    item { Heading(R.string.appearance, R.string.follow_system) }
-                    item { Heading(R.string.about, R.string.about_detail) }
-                }
+                Destination.Settings -> Unit
             }
         }
-    }
-}
-
-@Composable
-private fun Heading(@StringRes title: Int, @StringRes subtitle: Int) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(title), style = MaterialTheme.typography.headlineSmall)
-        Text(stringResource(subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
