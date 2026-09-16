@@ -41,6 +41,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.compose)
+    implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.datastore)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -53,6 +54,8 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp)
+    implementation(libs.coil.compose)
     implementation(libs.coroutines.android)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }

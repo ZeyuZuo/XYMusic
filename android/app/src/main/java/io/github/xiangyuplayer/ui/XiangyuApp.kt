@@ -21,7 +21,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -43,6 +42,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.xiangyuplayer.ui.auth.AuthViewModel
+import io.github.xiangyuplayer.ui.auth.LoginScreen
 import io.github.xiangyuplayer.BuildConfig
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.remote.ApiEndpoint
@@ -60,10 +62,17 @@ private enum class Destination(@StringRes val label: Int, val icon: ImageVector)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun XiangyuApp(settings: SettingsStore) {
+    val auth: AuthViewModel = viewModel()
+    val authState by auth.state.collectAsStateWithLifecycle()
+    var loginVisible by rememberSaveable { mutableStateOf(false) }
     var destination by rememberSaveable { mutableStateOf(Destination.Home) }
     var query by rememberSaveable { mutableStateOf("") }
     val savedEndpoint by settings.apiBaseUrl.collectAsStateWithLifecycle(initialValue = null)
     val snackbar = remember { SnackbarHostState() }
+    if (loginVisible) {
+        LoginScreen(authState, auth) { loginVisible = false }
+        return
+    }
     BackHandler(enabled = destination != Destination.Home) {
         destination = Destination.Home
     }
@@ -71,17 +80,12 @@ fun XiangyuApp(settings: SettingsStore) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
-                actions = {
-                    IconButton(onClick = { destination = Destination.Settings }) {
-                        Icon(Icons.Default.Settings, stringResource(R.string.settings))
-                    }
-                },
+                title = { Text(stringResource(if (destination == Destination.Settings) R.string.settings else R.string.app_name)) },
             )
         },
         bottomBar = {
             NavigationBar {
-                Destination.entries.filter { it != Destination.Settings }.forEach { item ->
+                Destination.entries.forEach { item ->
                     NavigationBarItem(
                         selected = item == destination,
                         onClick = { destination = item },
@@ -93,6 +97,12 @@ fun XiangyuApp(settings: SettingsStore) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { insets ->
+        if (destination == Destination.Settings) {
+            SettingsContent(authState, Modifier.padding(insets), { loginVisible = true }, auth::logout, auth::verify, auth::refreshProfile) {
+                EndpointSettings(savedEndpoint, settings, snackbar)
+            }
+            return@Scaffold
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(insets),
             contentPadding = PaddingValues(24.dp),
@@ -100,9 +110,8 @@ fun XiangyuApp(settings: SettingsStore) {
         ) {
             when (destination) {
                 Destination.Home -> {
-                    item { Heading(R.string.home_title, R.string.home_subtitle) }
-                    item { Text(stringResource(R.string.recently_played), style = MaterialTheme.typography.titleMedium) }
-                    item { EmptyCard(Icons.Default.Home, R.string.no_history, R.string.no_history_detail) }
+                    item { EmptyCard(Icons.Default.Home, R.string.daily_recommend, R.string.recommend_pending) }
+                    item { EmptyCard(Icons.Default.Favorite, R.string.personal_fm, R.string.recommend_pending) }
                 }
                 Destination.Search -> {
                     item { Text(stringResource(R.string.search_title), style = MaterialTheme.typography.headlineMedium) }
@@ -123,22 +132,9 @@ fun XiangyuApp(settings: SettingsStore) {
                     item { Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineMedium) }
                     item { EmptyCard(Icons.Default.Favorite, R.string.no_library, R.string.no_library_detail) }
                 }
-                Destination.Settings -> {
-                    item { Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineMedium) }
-                    item { EndpointSettings(savedEndpoint, settings, snackbar) }
-                    item { Heading(R.string.appearance, R.string.follow_system) }
-                    item { Heading(R.string.about, R.string.about_detail) }
-                }
+                Destination.Settings -> Unit
             }
         }
-    }
-}
-
-@Composable
-private fun Heading(@StringRes title: Int, @StringRes subtitle: Int) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(title), style = MaterialTheme.typography.headlineSmall)
-        Text(stringResource(subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
