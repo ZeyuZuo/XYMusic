@@ -1,0 +1,5 @@
+# 默认文本搜索只聚焦新项目；上游阅读请使用 rg --no-ignore。
+/references/NeriPlayer/
+/services/KuGouMusicApi/
+**/build/
+**/.gradle/

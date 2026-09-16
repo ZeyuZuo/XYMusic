@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">相遇音乐</string>
+    <string name="home">首页</string>
+    <string name="search">搜索</string>
+    <string name="library">音乐库</string>
+    <string name="settings">设置</string>
+    <string name="home_title">让音乐，回归音乐。</string>
+    <string name="home_subtitle">留一点时间，听喜欢的声音。</string>
+    <string name="recently_played">最近播放</string>
+    <string name="no_history">还没有播放记录</string>
+    <string name="no_history_detail">听过的歌曲，会在这里与你重逢。</string>
+    <string name="search_title">发现喜欢的声音</string>
+    <string name="search_hint">歌曲、歌手或专辑</string>
+    <string name="search_pending">在线搜索即将开放</string>
+    <string name="search_pending_detail">连接酷狗账号后，在这里找到喜欢的音乐。</string>
+    <string name="library_title">你的音乐，慢慢收藏</string>
+    <string name="no_library">音乐库还是空的</string>
+    <string name="no_library_detail">未来的收藏、歌单和聆听记录，都在这里。</string>
+    <string name="api_address">音乐服务地址</string>
+    <string name="api_address_hint">https://music.example.com/</string>
+    <string name="api_description">填写你部署的酷狗音乐服务地址。</string>
+    <string name="save">保存</string>
+    <string name="saved">地址已保存</string>
+    <string name="save_failed">保存失败，请重试</string>
+    <string name="invalid_address">请输入有效地址；发布版仅支持 HTTPS，地址不能包含账号、参数或片段。</string>
+    <string name="appearance">外观</string>
+    <string name="follow_system">跟随系统浅色或深色模式</string>
+    <string name="about">关于相遇</string>
+    <string name="about_detail">简单、安静，专注于听歌。</string>
+</resources>

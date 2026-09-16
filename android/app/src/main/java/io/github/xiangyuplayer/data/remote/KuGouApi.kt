@@ -1,0 +1,38 @@
+package io.github.xiangyuplayer.data.remote
+
+import com.google.gson.JsonObject
+import retrofit2.http.GET
+import retrofit2.http.Query
+
+/** Transport only. Map business errors and validated response fields in a repository. */
+interface KuGouApi {
+    @GET("register/dev")
+    suspend fun registerDevice(): JsonObject
+
+    @GET("search")
+    suspend fun searchSongs(
+        @Query("keywords") keywords: String,
+        @Query("page") page: Int = 1,
+        @Query("pagesize") pageSize: Int = 30,
+        @Query("type") type: String = "song",
+    ): JsonObject
+
+    @GET("song/url")
+    suspend fun songUrl(
+        @Query("hash") hash: String,
+        @Query("album_id") albumId: String? = null,
+        @Query("album_audio_id") albumAudioId: String? = null,
+        @Query("quality") quality: String = "128",
+    ): JsonObject
+
+    @GET("search/lyric")
+    suspend fun searchLyrics(@Query("hash") hash: String): JsonObject
+
+    @GET("lyric")
+    suspend fun lyrics(
+        @Query("id") id: String,
+        @Query("accesskey") accessKey: String,
+        @Query("fmt") format: String = "lrc",
+        @Query("decode") decode: Boolean = true,
+    ): JsonObject
+}

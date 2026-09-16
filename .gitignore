@@ -1,0 +1,37 @@
+# 上游独立仓库，保留在本机但不纳入主仓库
+/references/NeriPlayer/
+/services/KuGouMusicApi/
+
+# 环境管理与编辑器本地状态
+/.agents/
+/.codex/
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# 构建缓存、产物和本机 SDK 配置
+**/.gradle/
+**/.kotlin/
+**/build/
+**/local.properties
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+*.hprof
+
+# 服务依赖、环境配置与凭据
+**/node_modules/
+**/.env
+**/.env.*
+!**/.env.example
+*.jks
+*.keystore
+keystore.properties
+key.properties
+*.log
+
+# Gradle Wrapper JAR 是构建入口，必须提交；不要全局忽略 *.jar。
