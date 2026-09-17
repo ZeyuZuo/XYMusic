@@ -61,9 +61,10 @@ object SongUrlResponse {
         if (!offset?.text("clip_hash").isNullOrBlank()) {
             val start = offset?.text("start_ms")?.toLongOrNull()
             val end = offset?.text("end_ms")?.toLongOrNull()
-            // Only the observed zero-based preview format is supported until nonzero offsets are verified.
-            if (start != 0L || end == null || end <= 0L) throw PlaybackException(PlaybackFailure.RESPONSE)
-            return AudioSource(url.toString(), PlaybackAccess.PREVIEW, end)
+            // Verified nonzero previews retain the original track timeline. Clip BOTH bounds;
+            // clip_hash does not mean the returned URL starts at the preview's first sample.
+            if (start == null || start < 0L || end == null || end <= start) throw PlaybackException(PlaybackFailure.RESPONSE)
+            return AudioSource(url.toString(), PlaybackAccess.PREVIEW, end - start, start)
         }
         // Only the explicit full-play request can establish full access without a preview window.
         // A preview response missing its limits is ambiguous and must not be played unrestricted.

@@ -238,7 +238,9 @@ class PlaybackService : MediaSessionService() {
             .setIsPlayable(true).setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC).build()
         val item = MediaItem.Builder().setMediaId(song.hash).setUri(source.url).setMediaMetadata(metadata)
         source.previewDurationMs?.let { duration ->
-            item.setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setEndPositionMs(duration).build())
+            item.setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
+                .setStartPositionMs(source.previewStartMs)
+                .setEndPositionMs(source.previewStartMs + duration).build())
         }
         savedPosition = resumePosition(savedPosition, source.previewDurationMs)
         savedDuration = source.previewDurationMs

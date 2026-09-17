@@ -18,6 +18,15 @@ class SongUrlResponseTest {
         assertFalse(source.toString().contains("https://"))
     }
 
+    @Test fun nonzeroPreviewKeepsOriginalStartAndUsesWindowLength() {
+        for (start in listOf(65_700L, 64_201L, 27_689L, 60_700L)) {
+            val source = parse("""{"status":1,"priv_status":0,"timeLength":263,"url":["https://audio.example.invalid/track.mp3"],"hash_offset":{"clip_hash":"synthetic","start_ms":$start,"end_ms":${start + 60_000}}}""")
+            assertEquals(PlaybackAccess.PREVIEW, source.access)
+            assertEquals(start, source.previewStartMs)
+            assertEquals(60_000L, source.previewDurationMs)
+        }
+    }
+
     @Test fun fullPlayRequiresSuccessWithoutPreviewLimits() {
         val json = JsonParser.parseString("""{"status":1,"url":["https://audio.example.invalid/full.mp3"]}""").asJsonObject
         assertEquals(PlaybackAccess.FULL, SongUrlResponse.parse(json, false).access)
@@ -37,8 +46,9 @@ class SongUrlResponseTest {
         }
     }
 
-    @Test fun invalidOrUnconfirmedPreviewWindowFailsClosed() {
-        for (range in listOf("", "\"start_ms\":0,\"end_ms\":0,", "\"start_ms\":10000,\"end_ms\":60000,")) {
+    @Test fun invalidPreviewWindowFailsClosed() {
+        for (range in listOf("", "\"start_ms\":0,\"end_ms\":0,", "\"start_ms\":-1,\"end_ms\":60000,",
+            "\"start_ms\":60000,\"end_ms\":60000,", "\"start_ms\":70000,\"end_ms\":60000,")) {
             assertThrows(PlaybackException::class.java) {
                 parse("""{"status":1,"url":["https://audio.example.invalid/a.mp3"],"hash_offset":{${range}"clip_hash":"synthetic"}}""")
             }
