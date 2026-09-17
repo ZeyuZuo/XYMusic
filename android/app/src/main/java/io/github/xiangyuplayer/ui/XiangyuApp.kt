@@ -33,6 +33,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.LaunchedEffect
 import io.github.xiangyuplayer.ui.search.SearchScreen
 import io.github.xiangyuplayer.ui.search.SearchViewModel
+import io.github.xiangyuplayer.ui.playback.PlaybackViewModel
+import io.github.xiangyuplayer.ui.playback.MiniPlayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +71,8 @@ fun XiangyuApp(settings: SettingsStore) {
     val authState by auth.state.collectAsStateWithLifecycle()
     var loginVisible by rememberSaveable { mutableStateOf(false) }
     var destination by rememberSaveable { mutableStateOf(Destination.Home) }
+    val playback: PlaybackViewModel = viewModel()
+    val playbackState by playback.state.collectAsStateWithLifecycle()
     val search: SearchViewModel = viewModel()
     val searchState by search.state.collectAsStateWithLifecycle()
     val searchRepository = auth.searchRepository.takeIf { authState.ready && authState.account != null }
@@ -92,14 +96,17 @@ fun XiangyuApp(settings: SettingsStore) {
             )
         },
         bottomBar = {
-            NavigationBar {
-                Destination.entries.forEach { item ->
-                    NavigationBarItem(
-                        selected = item == destination,
-                        onClick = { destination = item },
-                        icon = { Icon(item.icon, contentDescription = null) },
-                        label = { Text(stringResource(item.label)) },
-                    )
+            Column {
+                MiniPlayer(playbackState, playback::toggle, playback::retry)
+                NavigationBar {
+                    Destination.entries.forEach { item ->
+                        NavigationBarItem(
+                            selected = item == destination,
+                            onClick = { destination = item },
+                            icon = { Icon(item.icon, contentDescription = null) },
+                            label = { Text(stringResource(item.label)) },
+                        )
+                    }
                 }
             }
         },
@@ -112,7 +119,7 @@ fun XiangyuApp(settings: SettingsStore) {
             return@Scaffold
         }
         if (destination == Destination.Search) {
-            SearchScreen(searchState, search, searchRepository != null, Modifier.padding(insets))
+            SearchScreen(searchState, search, searchRepository != null, Modifier.padding(insets), playback::play)
             return@Scaffold
         }
         LazyColumn(

@@ -11,6 +11,9 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 // Called only from Dispatchers.IO. Account data never enters ordinary preferences or backups.
 interface SessionPersistence {
@@ -32,16 +35,16 @@ class SessionStore(context: Context) : SessionPersistence {
         }.generateKey()
     }
 
-    override fun read(): SavedSession? {
+    override fun read(): SavedSession? = synchronized(lock) {
         if (!file.baseFile.exists()) return null
         val bytes = file.openRead().use { it.readBytes() }
         require(bytes.size > 28)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
-        return gson.fromJson(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8), SavedSession::class.java)
+        gson.fromJson(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8), SavedSession::class.java)
     }
 
-    override fun save(session: SavedSession) {
+    override fun save(session: SavedSession) = synchronized(lock) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val bytes = cipher.iv + cipher.doFinal(gson.toJson(session).toByteArray(Charsets.UTF_8))
@@ -49,16 +52,28 @@ class SessionStore(context: Context) : SessionPersistence {
         try {
             stream.write(bytes)
             file.finishWrite(stream)
+            revisions.update { it.copy(value = it.value + 1) }
         } catch (error: Exception) {
             file.failWrite(stream)
             throw error
         }
     }
 
-    override fun clear() = file.delete()
+    override fun clear() = synchronized(lock) {
+        file.delete()
+        revisions.update { SessionRevision(it.value + 1, it.accountEpoch + 1) }
+    }
 
-    private companion object { const val ALIAS = "xiangyu.account.v1" }
+    companion object {
+        private const val ALIAS = "xiangyu.account.v1"
+        private val lock = Any()
+        private val revisions = MutableStateFlow(SessionRevision())
+        val changes = revisions.asStateFlow()
+    }
 }
 
 // Deliberately not a data class: toString must never include session cookies.
 class SavedSession(val endpoint: String, val userId: String, val nickname: String, val cookies: List<String>)
+
+/** Non-sensitive change signal shared by stores in this process. */
+data class SessionRevision(val value: Long = 0, val accountEpoch: Long = 0)

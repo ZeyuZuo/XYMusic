@@ -17,7 +17,7 @@
               MediaController → PlaybackService → ExoPlayer → 音频 CDN
 ```
 
-当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；播放服务仍为骨架，MediaController 与播放地址解析尚未接通。
+当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；基础单曲点播已接通 MediaController 与播放地址解析，服务独立观察会话变化。完整播放页、队列、恢复和歌词尚未实现。
 
 `android/app/src/main/java/io/github/xiangyuplayer/`：
 
@@ -48,7 +48,8 @@
 - HTTP 接口返回 JsonObject 只是传输边界，HTTP 200 不代表业务成功。登录 Repository 已检查 status 和必填字段；其他业务仍需各自映射与错误处理。
 - `/song/url/new` 文档提示加密音频问题，初期只接 `/song/url`，实际验证格式后再扩展。
 - 发布版禁止 HTTP；调试版允许模拟器和局域网开发。API 地址存储不包含账号信息。
-- Media3 服务已有媒体会话、音频焦点与耳机断开处理；还没有界面控制器、播放 URL 解析、队列持久化或自动恢复。
+- Media3 服务已有媒体会话、控制器、音频焦点、耳机断开处理与播放 URL 解析；界面仅展示迷你播放器，还没有完整播放页、队列持久化或自动恢复。
+- 播放数据层实现 `AudioSourceResolver`，服务层负责请求切换和播放器生命周期；通过非敏感的会话版本通知同步账号失效，不依赖 Compose 重组来停止播放。阶段范围及验收见 [播放计划](PLAYBACK_PLAN.md)。
 
 ## 验收
 

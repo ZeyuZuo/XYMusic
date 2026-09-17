@@ -1,6 +1,9 @@
 package io.github.xiangyuplayer.ui.search
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import io.github.xiangyuplayer.domain.model.Song
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -21,7 +24,7 @@ import io.github.xiangyuplayer.data.search.SearchCategory
 import io.github.xiangyuplayer.data.search.SearchResult
 
 @Composable
-fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean, modifier: Modifier = Modifier) {
+fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean, modifier: Modifier = Modifier, onPlay: (Song) -> Unit) {
     val listState = rememberLazyListState()
     LaunchedEffect(state.query, state.category) { listState.scrollToItem(0) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -65,7 +68,7 @@ fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean,
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(state.items) { result ->
-                    SearchResultRow(result)
+                    SearchResultRow(result, onPlay)
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 }
                 if (state.loading) item {
@@ -99,9 +102,13 @@ private fun StatusText(message: Int) {
 }
 
 @Composable
-private fun SearchResultRow(result: SearchResult) {
+private fun SearchResultRow(result: SearchResult, onPlay: (Song) -> Unit) {
     // Variable height and unrestricted wrapping preserve long titles and all artist names at large font sizes.
-    Column(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 10.dp),
+    val playLabel = stringResource(R.string.playback_play_song, result.title)
+    val interaction = result.song?.let { song ->
+        Modifier.clickable(role = Role.Button, onClickLabel = playLabel) { onPlay(song) }
+    } ?: Modifier
+    Column(Modifier.fillMaxWidth().heightIn(min = 64.dp).then(interaction).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(result.title, style = MaterialTheme.typography.titleSmall)
         result.subtitle?.let {

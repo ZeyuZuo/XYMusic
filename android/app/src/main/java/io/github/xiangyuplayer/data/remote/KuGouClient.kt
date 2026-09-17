@@ -26,6 +26,12 @@ class KuGouClient(baseUrl: String) {
         .build()
         .create(KuGouApi::class.java)
 
+    fun close() {
+        clearSession()
+        http.connectionPool.evictAll()
+        http.dispatcher.executorService.shutdown()
+    }
+
     fun clearSession() {
         http.dispatcher.cancelAll()
         session.clear()

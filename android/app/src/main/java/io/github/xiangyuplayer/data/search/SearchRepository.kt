@@ -59,6 +59,7 @@ object SearchResponse {
                 ?.mapNotNull { it.takeIf { it.isJsonObject }?.asJsonObject?.text("name") }
                 ?.takeIf { it.isNotEmpty() } ?: listOfNotNull(row.text("SingerName")), albumId = row.text("AlbumID"),
             albumAudioId = row.text("MixSongID"), albumTitle = row.text("AlbumName"),
+            coverUrl = io.github.xiangyuplayer.data.remote.ArtworkUrl.parse(row.text("Image")),
             source = row.text("Source"), sourceId = row.text("SourceID"),
             durationMs = row.count("Duration")?.takeIf { it <= Long.MAX_VALUE / 1000 }?.times(1000),
         )

@@ -40,6 +40,7 @@ interface KuGouApi {
         @Query("album_id") albumId: String? = null,
         @Query("album_audio_id") albumAudioId: String? = null,
         @Query("quality") quality: String = "128",
+        @Query("free_part") freePart: Int? = null,
     ): JsonObject
 
     @GET("search/lyric")
