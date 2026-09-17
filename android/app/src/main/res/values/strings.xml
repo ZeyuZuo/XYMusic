@@ -111,6 +111,12 @@
     <string name="search_album_count">%1$d 张专辑</string>
     <string name="search_duration">%1$d:%2$02d</string>
     <string name="playback_play">播放</string>
+    <string name="playback_open">打开播放页</string>
+    <string name="playback_now">正在播放</string>
+    <string name="playback_progress">播放进度</string>
+    <string name="playback_time_unknown">--:--</string>
+    <string name="playback_time">%1$d:%2$02d</string>
+    <string name="playback_progress_description">%1$s，共 %2$s</string>
     <string name="playback_pause">暂停</string>
     <string name="playback_retry">重试播放</string>
     <string name="playback_play_song">播放 %1$s</string>

@@ -1,6 +1,7 @@
 package io.github.xiangyuplayer.ui.playback
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,13 +36,14 @@ import io.github.xiangyuplayer.data.remote.AvatarImages
 import io.github.xiangyuplayer.domain.model.PlaybackFailure
 
 @Composable
-fun MiniPlayer(state: PlaybackUiState, onToggle: () -> Unit, onRetry: () -> Unit) {
+fun MiniPlayer(state: PlaybackUiState, onToggle: () -> Unit, onRetry: () -> Unit, onOpen: () -> Unit) {
     val song = state.song ?: return
     val context = LocalContext.current
     val images = remember { AvatarImages.create(context) }
     DisposableEffect(images) { onDispose { images.shutdown() } }
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        Row(Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.playback_open), onClick = onOpen)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
                 SubcomposeAsyncImage(model = song.coverUrl, imageLoader = images,
@@ -82,7 +84,7 @@ private fun CoverPlaceholder() {
     }
 }
 
-private fun failureMessage(failure: PlaybackFailure): Int = when (failure) {
+internal fun failureMessage(failure: PlaybackFailure): Int = when (failure) {
     PlaybackFailure.ACCOUNT -> R.string.playback_account_error
     PlaybackFailure.NETWORK -> R.string.playback_network_error
     PlaybackFailure.PERMISSION -> R.string.playback_permission_error

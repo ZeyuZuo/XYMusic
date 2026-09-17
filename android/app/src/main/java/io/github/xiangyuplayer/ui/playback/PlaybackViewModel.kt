@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.os.Bundle
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionResult
@@ -17,6 +18,9 @@ import io.github.xiangyuplayer.playback.PlaybackService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** A projection of the service's state. Releasing this controller must never stop background playback. */
 class PlaybackViewModel(application: Application) : AndroidViewModel(application) {
@@ -31,7 +35,17 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         override fun onEvents(player: Player, events: Player.Events) { controller?.let(::update) }
     }
 
-    init { connect() }
+    init {
+        connect()
+        viewModelScope.launch {
+            mutable.subscriptionCount.collectLatest { count ->
+                if (count > 0) while (true) {
+                    controller?.let(::update)
+                    delay(500)
+                }
+            }
+        }
+    }
 
     private fun connect() {
         if (future != null || disposed) return
@@ -85,6 +99,15 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         else observeResult(remote.sendCustomCommand(PlaybackProtocol.retry, Bundle.EMPTY))
     }
 
+    fun seekTo(song: Song, positionMs: Long) {
+        val remote = controller ?: return
+        update(remote)
+        val current = mutable.value
+        if (current.song != song || !current.seekable || current.failure != null) return
+        remote.seekTo(positionMs.coerceIn(0L, current.durationMs!!))
+        update(remote)
+    }
+
     private fun observeResult(result: ListenableFuture<SessionResult>) {
         result.addListener({
             if (!disposed) try {
@@ -100,8 +123,14 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     private fun update(remote: MediaController) {
         val extras = remote.sessionExtras
         val song = extras.getBundle("song")?.let(PlaybackProtocol::song)
+        val resolving = extras.getBoolean("resolving")
+        val duration = remote.duration.takeIf { it > 0 && !resolving && remote.currentMediaItem != null }
         mutable.value = PlaybackUiState(song = song, connected = true,
-            resolving = extras.getBoolean("resolving"), preview = extras.getBoolean("preview"),
+            resolving = resolving, preview = extras.getBoolean("preview"),
+            positionMs = if (duration != null) remote.currentPosition.coerceIn(0L, duration) else 0L,
+            durationMs = duration,
+            seekable = duration != null && remote.isCurrentMediaItemSeekable && remote.playerError == null &&
+                remote.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
             buffering = remote.playbackState == Player.STATE_BUFFERING,
             playing = remote.playWhenReady && remote.playbackState != Player.STATE_ENDED,
             failure = extras.getString("failure")?.let { value -> PlaybackFailure.entries.firstOrNull { it.name == value } }
@@ -124,4 +153,7 @@ data class PlaybackUiState(
     val playing: Boolean = false,
     val preview: Boolean = false,
     val failure: PlaybackFailure? = null,
+    val positionMs: Long = 0L,
+    val durationMs: Long? = null,
+    val seekable: Boolean = false,
 )

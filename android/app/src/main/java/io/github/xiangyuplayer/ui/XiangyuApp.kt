@@ -35,6 +35,7 @@ import io.github.xiangyuplayer.ui.search.SearchScreen
 import io.github.xiangyuplayer.ui.search.SearchViewModel
 import io.github.xiangyuplayer.ui.playback.PlaybackViewModel
 import io.github.xiangyuplayer.ui.playback.MiniPlayer
+import io.github.xiangyuplayer.ui.playback.PlaybackScreen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,6 +74,10 @@ fun XiangyuApp(settings: SettingsStore) {
     var destination by rememberSaveable { mutableStateOf(Destination.Home) }
     val playback: PlaybackViewModel = viewModel()
     val playbackState by playback.state.collectAsStateWithLifecycle()
+    var playbackVisible by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(playbackState.song, playbackState.connected) {
+        if (playbackState.connected && playbackState.song == null) playbackVisible = false
+    }
     val search: SearchViewModel = viewModel()
     val searchState by search.state.collectAsStateWithLifecycle()
     val searchRepository = auth.searchRepository.takeIf { authState.ready && authState.account != null }
@@ -83,6 +88,10 @@ fun XiangyuApp(settings: SettingsStore) {
     val snackbar = remember { SnackbarHostState() }
     if (loginVisible) {
         LoginScreen(authState, auth) { loginVisible = false }
+        return
+    }
+    if (playbackVisible && playbackState.song != null) {
+        PlaybackScreen(playbackState, playback::toggle, playback::retry, playback::seekTo) { playbackVisible = false }
         return
     }
     BackHandler(enabled = destination != Destination.Home) {
@@ -97,7 +106,7 @@ fun XiangyuApp(settings: SettingsStore) {
         },
         bottomBar = {
             Column {
-                MiniPlayer(playbackState, playback::toggle, playback::retry)
+                MiniPlayer(playbackState, playback::toggle, playback::retry) { playbackVisible = true }
                 NavigationBar {
                     Destination.entries.forEach { item ->
                         NavigationBarItem(
