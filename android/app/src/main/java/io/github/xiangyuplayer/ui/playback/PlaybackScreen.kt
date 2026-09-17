@@ -78,9 +78,10 @@ fun PlaybackScreen(
                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (state.preview) Text(stringResource(R.string.playback_preview), color = MaterialTheme.colorScheme.primary)
                 val message = state.failure?.let(::failureMessage)
-                    ?: if (state.resolving) R.string.playback_resolving else if (state.buffering) R.string.playback_buffering else null
+                    ?: if (state.resolving) R.string.playback_resolving else if (state.buffering) R.string.playback_buffering else if (state.needsSource) R.string.playback_resume_ready else null
                 message?.let { Text(stringResource(it),
                     color = if (state.failure != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (state.storageError) Text(stringResource(R.string.playback_storage_error), color = MaterialTheme.colorScheme.error)
             }
             PlaybackProgress(state, onSeek, Modifier.widthIn(max = 560.dp).fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {

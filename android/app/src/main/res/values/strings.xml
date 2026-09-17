@@ -146,4 +146,6 @@
     <string name="mode_sequential">顺序播放</string>
     <string name="mode_shuffle">随机播放</string>
     <string name="mode_repeat_one">单曲循环</string>
+    <string name="playback_resume_ready">已恢复，点击播放继续。</string>
+    <string name="playback_storage_error">播放记录暂时无法读写，重启后可能无法恢复最新进度。</string>
 </resources>

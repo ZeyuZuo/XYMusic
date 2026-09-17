@@ -68,5 +68,17 @@ class PlaybackQueue(private val random: Random = Random.Default) {
         } else order.addAll(entries.map(::key))
     }
 
+    fun snapshot() = QueueSnapshot(songs, order.toList(), current?.let(::key), mode)
+
+    fun restore(snapshot: QueueSnapshot) {
+        clear()
+        entries.addAll(snapshot.songs)
+        order.addAll(snapshot.order)
+        mode = snapshot.mode
+        current = snapshot.current?.let { id -> entries.firstOrNull { key(it) == id } }
+    }
+
     fun clear() { entries.clear(); order.clear(); current = null }
 }
+
+data class QueueSnapshot(val songs: List<Song>, val order: List<String>, val current: String?, val mode: PlaybackMode)

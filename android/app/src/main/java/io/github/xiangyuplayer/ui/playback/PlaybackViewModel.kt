@@ -152,16 +152,20 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         val extras = remote.sessionExtras
         val song = extras.getBundle("song")?.let(PlaybackProtocol::song)
         val resolving = extras.getBoolean("resolving")
-        val duration = remote.duration.takeIf { it > 0 && !resolving && remote.currentMediaItem != null }
+        val needsSource = extras.getBoolean("needsSource")
+        val savedPosition = extras.getLong("savedPosition")
+        val savedDuration = if (extras.containsKey("savedDuration")) extras.getLong("savedDuration") else null
+        val duration = if (needsSource || resolving) savedDuration else remote.duration.takeIf { it > 0 && !resolving && remote.currentMediaItem != null }
         mutable.value = PlaybackUiState(song = song, connected = true,
             queue = PlaybackProtocol.queue(extras),
             mode = PlaybackMode.entries.firstOrNull { it.name == extras.getString("mode") } ?: PlaybackMode.SEQUENTIAL,
             hasNext = extras.getBoolean("hasNext"), hasPrevious = extras.getBoolean("hasPrevious"),
             actionMessage = mutable.value.actionMessage,
+            needsSource = needsSource, storageError = extras.getBoolean("storageError"),
             resolving = resolving, preview = extras.getBoolean("preview"),
-            positionMs = if (duration != null) remote.currentPosition.coerceIn(0L, duration) else 0L,
+            positionMs = if (needsSource || resolving) savedPosition else if (duration != null) remote.currentPosition.coerceIn(0L, duration) else 0L,
             durationMs = duration,
-            seekable = duration != null && remote.isCurrentMediaItemSeekable && remote.playerError == null &&
+            seekable = !needsSource && !resolving && duration != null && remote.isCurrentMediaItemSeekable && remote.playerError == null &&
                 remote.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
             buffering = remote.playbackState == Player.STATE_BUFFERING,
             playing = remote.playWhenReady && remote.playbackState != Player.STATE_ENDED,
@@ -193,4 +197,6 @@ data class PlaybackUiState(
     val positionMs: Long = 0L,
     val durationMs: Long? = null,
     val seekable: Boolean = false,
+    val needsSource: Boolean = false,
+    val storageError: Boolean = false,
 )

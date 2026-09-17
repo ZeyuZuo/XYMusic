@@ -25,7 +25,7 @@ class PlaybackSessions(context: Context) {
     }
 }
 
-class PlaybackSession(val saved: SavedSession, epoch: Long) {
+class PlaybackSession(val saved: SavedSession, val epoch: Long) {
     // Includes the logout epoch so rapidly logging into the same account still invalidates old playback.
-    val identity = listOf(saved.endpoint, saved.userId, epoch.toString())
+    val identity = listOf(saved.endpoint, saved.userId, saved.playbackId, epoch.toString())
 }

@@ -58,9 +58,11 @@ fun MiniPlayer(state: PlaybackUiState, onToggle: () -> Unit, onRetry: () -> Unit
                 if (state.preview) Text(stringResource(R.string.playback_preview),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 val message = state.failure?.let(::failureMessage)
-                    ?: if (state.resolving) R.string.playback_resolving else if (state.buffering) R.string.playback_buffering else null
+                    ?: if (state.resolving) R.string.playback_resolving else if (state.buffering) R.string.playback_buffering else if (state.needsSource) R.string.playback_resume_ready else null
                 message?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall,
                     color = if (state.failure != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (state.storageError) Text(stringResource(R.string.playback_storage_error), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
             }
             when {
                 state.resolving -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {

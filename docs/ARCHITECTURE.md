@@ -17,7 +17,7 @@
               MediaController → PlaybackService → ExoPlayer → 音频 CDN
 ```
 
-当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；基础单曲点播已接通 MediaController 与播放地址解析，服务独立观察会话变化。完整播放页已接入实际进度与拖动定位；本地队列、上下首及三种播放模式已实现，恢复和歌词尚未实现。
+当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；基础单曲点播已接通 MediaController 与播放地址解析，服务独立观察会话变化。完整播放页已接入实际进度与拖动定位；本地队列、上下首及三种播放模式已实现，本地恢复和有限地址刷新已实现，歌词尚未实现。
 
 `android/app/src/main/java/io/github/xiangyuplayer/`：
 
@@ -48,7 +48,7 @@
 - HTTP 接口返回 JsonObject 只是传输边界，HTTP 200 不代表业务成功。登录 Repository 已检查 status 和必填字段；其他业务仍需各自映射与错误处理。
 - `/song/url/new` 文档提示加密音频问题，初期只接 `/song/url`，实际验证格式后再扩展。
 - 发布版禁止 HTTP；调试版允许模拟器和局域网开发。API 地址存储不包含账号信息。
-- Media3 服务已有媒体会话、控制器、音频焦点、耳机断开处理与播放 URL 解析；界面提供迷你播放器与完整播放页，还没有队列持久化或自动恢复。
+- Media3 服务已有媒体会话、控制器、音频焦点、耳机断开处理与播放 URL 解析；界面提供迷你播放器与完整播放页，已支持队列持久化及重启恢复为暂停。
 - 播放数据层实现 `AudioSourceResolver`，服务层负责请求切换和播放器生命周期；通过非敏感的会话版本通知同步账号失效，不依赖 Compose 重组来停止播放。阶段范围及验收见 [播放计划](PLAYBACK_PLAN.md)。
 
 ## 验收
@@ -59,4 +59,10 @@
 
 ## 当前队列实现
 
-PlaybackQueue 只保存歌曲元数据、当前项和遍历顺序，由 PlaybackService 在主线程串行操作；播放地址仍按当前歌曲独立解析，不加入队列或持久化。QueueSessionPlayer 使用 Media3 的 ForwardingSimpleBasePlayer 将标准上下首命令转交服务，其他播放与进度控制交给原 ExoPlayer。通知栏、耳机和页面因此共用同一套切歌规则。界面通过会话命令维护队列，通过会话状态展示队列，不自行修改播放器。队列恢复留待阶段 4。
+PlaybackQueue 只保存歌曲元数据、当前项和遍历顺序，由 PlaybackService 在主线程串行操作；播放地址仍按当前歌曲独立解析，不加入队列或持久化。QueueSessionPlayer 使用 Media3 的 ForwardingSimpleBasePlayer 将标准上下首命令转交服务，其他播放与进度控制交给原 ExoPlayer。通知栏、耳机和页面因此共用同一套切歌规则。界面通过会话命令维护队列，通过会话状态展示队列，不自行修改播放器。队列恢复已在阶段 4 实现。
+
+## 播放恢复与稳定性
+
+PlaybackStateStore 在 IO 协程中串行、原子写入队列快照，PlaybackSnapshotCodec 校验归属、版本和字段结构。会话缓存标识保存在加密会话中，播放文件只保存该不含认证内容的随机标识；写入与退出清理共用 SessionStore 的锁。服务在会话与快照加载后恢复暂停状态，通过会话附加状态向界面提供待恢复进度。实际音频只在用户播放时请求，QueueSessionPlayer 同时处理标准播放/停止命令。
+
+PlaybackRecovery 限制每次明确播放或手动重试最多刷新一次可能失效的地址；HTTP 401/403/404/410 才触发新解析，解析仍遵守账号权限。保存、解析与播放器生命周期分开管理；网络恢复不自动触发播放。

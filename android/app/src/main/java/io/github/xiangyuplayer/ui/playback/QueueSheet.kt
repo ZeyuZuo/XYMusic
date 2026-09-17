@@ -32,6 +32,7 @@ fun QueueSheet(state: PlaybackUiState, onSelect: (String) -> Unit, onRemove: (St
                 }
             }
             PlaybackModeMenu(state.mode, state.connected, onMode, Modifier.padding(horizontal = 8.dp))
+            if (state.storageError) Text(stringResource(R.string.playback_storage_error), Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
             state.actionMessage?.let { Text(stringResource(it), Modifier.padding(horizontal = 16.dp)) }
             if (state.queue.isEmpty()) Text(stringResource(R.string.queue_empty), Modifier.padding(24.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false)) {

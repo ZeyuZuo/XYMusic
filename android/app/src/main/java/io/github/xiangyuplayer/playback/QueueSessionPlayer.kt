@@ -12,6 +12,8 @@ internal class QueueSessionPlayer(
     player: Player,
     private val queue: PlaybackQueue,
     private val onSkip: (forward: Boolean) -> Unit,
+    private val onResume: () -> Boolean,
+    private val onStop: () -> Unit,
 ) : ForwardingSimpleBasePlayer(player) {
     override fun getState(): State {
         val state = super.getState()
@@ -24,6 +26,16 @@ internal class QueueSessionPlayer(
     }
 
     fun refreshQueue() = invalidateState()
+
+    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        if (playWhenReady && onResume()) return Futures.immediateVoidFuture()
+        return super.handleSetPlayWhenReady(playWhenReady)
+    }
+
+    override fun handleStop(): ListenableFuture<*> {
+        onStop()
+        return Futures.immediateVoidFuture()
+    }
 
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
         when (seekCommand) {
