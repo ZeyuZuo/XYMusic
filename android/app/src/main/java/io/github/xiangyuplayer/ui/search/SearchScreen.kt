@@ -7,13 +7,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.runtime.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -24,7 +24,7 @@ import io.github.xiangyuplayer.data.search.SearchCategory
 import io.github.xiangyuplayer.data.search.SearchResult
 
 @Composable
-fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean, modifier: Modifier = Modifier, onPlay: (Song) -> Unit) {
+fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean, modifier: Modifier = Modifier, onPlay: (Song) -> Unit, onNext: (Song) -> Unit, currentHash: String?) {
     val listState = rememberLazyListState()
     LaunchedEffect(state.query, state.category) { listState.scrollToItem(0) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -68,7 +68,7 @@ fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean,
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(state.items) { result ->
-                    SearchResultRow(result, onPlay)
+                    SearchResultRow(result, onPlay, onNext, currentHash)
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 }
                 if (state.loading) item {
@@ -102,27 +102,44 @@ private fun StatusText(message: Int) {
 }
 
 @Composable
-private fun SearchResultRow(result: SearchResult, onPlay: (Song) -> Unit) {
+private fun SearchResultRow(result: SearchResult, onPlay: (Song) -> Unit, onNext: (Song) -> Unit, currentHash: String?) {
     // Variable height and unrestricted wrapping preserve long titles and all artist names at large font sizes.
     val playLabel = stringResource(R.string.playback_play_song, result.title)
     val interaction = result.song?.let { song ->
         Modifier.clickable(role = Role.Button, onClickLabel = playLabel) { onPlay(song) }
     } ?: Modifier
-    Column(Modifier.fillMaxWidth().heightIn(min = 64.dp).then(interaction).padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(result.title, style = MaterialTheme.typography.titleSmall)
-        result.subtitle?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        val details = buildList {
-            result.song?.albumTitle?.let { add(it) }
-            result.song?.durationMs?.let {
-                add(stringResource(R.string.search_duration, it / 60_000, it / 1000 % 60))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).heightIn(min = 64.dp).then(interaction).padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(result.title, style = MaterialTheme.typography.titleSmall)
+            result.subtitle?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            result.songCount?.let { add(stringResource(R.string.search_song_count, it)) }
-            result.albumCount?.let { add(stringResource(R.string.search_album_count, it)) }
+            val details = buildList {
+                result.song?.albumTitle?.let { add(it) }
+                result.song?.durationMs?.let {
+                    add(stringResource(R.string.search_duration, it / 60_000, it / 1000 % 60))
+                }
+                result.songCount?.let { add(stringResource(R.string.search_song_count, it)) }
+                result.albumCount?.let { add(stringResource(R.string.search_album_count, it)) }
+            }
+            if (details.isNotEmpty()) Text(details.joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (details.isNotEmpty()) Text(details.joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        result.song?.let { song ->
+            var expanded by remember(song.hash) { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { expanded = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.MoreVert, stringResource(R.string.song_actions, song.title))
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.playback_play)) },
+                        onClick = { expanded = false; onPlay(song) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.queue_play_next)) },
+                        enabled = !song.hash.equals(currentHash, ignoreCase = true),
+                        onClick = { expanded = false; onNext(song) })
+                }
+            }
+        }
     }
 }

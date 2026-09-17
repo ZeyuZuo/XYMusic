@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,7 +37,7 @@ import io.github.xiangyuplayer.data.remote.AvatarImages
 import io.github.xiangyuplayer.domain.model.PlaybackFailure
 
 @Composable
-fun MiniPlayer(state: PlaybackUiState, onToggle: () -> Unit, onRetry: () -> Unit, onOpen: () -> Unit) {
+fun MiniPlayer(state: PlaybackUiState, onToggle: () -> Unit, onRetry: () -> Unit, onQueue: () -> Unit, onOpen: () -> Unit) {
     val song = state.song ?: return
     val context = LocalContext.current
     val images = remember { AvatarImages.create(context) }
@@ -72,6 +73,9 @@ fun MiniPlayer(state: PlaybackUiState, onToggle: () -> Unit, onRetry: () -> Unit
                     if (state.playing) Icon(painterResource(R.drawable.ic_pause), stringResource(R.string.playback_pause))
                     else Icon(Icons.Default.PlayArrow, stringResource(R.string.playback_play))
                 }
+            }
+            IconButton(onClick = onQueue, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.AutoMirrored.Filled.List, stringResource(R.string.playback_queue))
             }
         }
     }

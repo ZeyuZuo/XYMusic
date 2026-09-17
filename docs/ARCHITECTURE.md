@@ -17,7 +17,7 @@
               MediaController → PlaybackService → ExoPlayer → 音频 CDN
 ```
 
-当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；基础单曲点播已接通 MediaController 与播放地址解析，服务独立观察会话变化。完整播放页已接入实际进度与拖动定位；队列、恢复和歌词尚未实现。
+当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；基础单曲点播已接通 MediaController 与播放地址解析，服务独立观察会话变化。完整播放页已接入实际进度与拖动定位；本地队列、上下首及三种播放模式已实现，恢复和歌词尚未实现。
 
 `android/app/src/main/java/io/github/xiangyuplayer/`：
 
@@ -56,3 +56,7 @@
 构建与静态检查：`./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug`。
 
 接通播放后真机验证：锁屏控制、切后台连续播放、耳机拔出、电话音频焦点、网络中断、链接过期、退出登录、重启进程。网络层自动化测试不使用真实账号或真实令牌。
+
+## 当前队列实现
+
+PlaybackQueue 只保存歌曲元数据、当前项和遍历顺序，由 PlaybackService 在主线程串行操作；播放地址仍按当前歌曲独立解析，不加入队列或持久化。QueueSessionPlayer 使用 Media3 的 ForwardingSimpleBasePlayer 将标准上下首命令转交服务，其他播放与进度控制交给原 ExoPlayer。通知栏、耳机和页面因此共用同一套切歌规则。界面通过会话命令维护队列，通过会话状态展示队列，不自行修改播放器。队列恢复留待阶段 4。

@@ -47,7 +47,11 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private lateinit var player: ExoPlayer
     private lateinit var requests: PlaybackRequests
-    private var selected: Song? = null
+    private lateinit var sessionPlayer: QueueSessionPlayer
+    private val queue = PlaybackQueue()
+    private val selected get() = queue.current
+    private var resolving = false
+    private var failure: PlaybackFailure? = null
     private var preview = false
 
     override fun onCreate() {
@@ -60,17 +64,24 @@ class PlaybackService : MediaSessionService() {
             .build()
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                publish(failure = PlaybackFailure.PLAYER)
+                failure = PlaybackFailure.PLAYER
+                publish()
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED && player.playWhenReady && !resolving && failure == null) {
+                    queue.next(automatic = true)?.let { select(it) }
+                }
             }
         })
         requests = PlaybackRequests(scope, AudioSourceResolver { song ->
             accountReady.await()
             val saved = account?.saved ?: throw io.github.xiangyuplayer.domain.model.PlaybackException(PlaybackFailure.ACCOUNT)
             KuGouAudioSourceResolver(saved).resolve(song)
-        }, ::startPlayback) { publish(failure = it) }
+        }, ::startPlayback) { resolving = false; failure = it; publish() }
         val activity = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        session = MediaSession.Builder(this, player).setSessionActivity(activity)
+        sessionPlayer = QueueSessionPlayer(player, queue, ::skip)
+        session = MediaSession.Builder(this, sessionPlayer).setSessionActivity(activity)
             .setCallback(SessionCallback()).build()
         scope.launch {
             PlaybackSessions(applicationContext).changes.collect { updated ->
@@ -81,12 +92,15 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    private fun select(song: Song) {
+    private fun select(song: Song, start: Boolean = true) {
+        requests.cancel()
+        resolving = true
+        failure = null
         player.stop()
         player.clearMediaItems()
-        selected = song
+        player.playWhenReady = start
         preview = false
-        publish(resolving = true)
+        publish()
         requests.play(song)
     }
 
@@ -102,21 +116,35 @@ class PlaybackService : MediaSessionService() {
         }
         player.setMediaItem(item.build())
         player.prepare()
-        player.play()
+        resolving = false
         publish()
     }
 
-    private fun publish(resolving: Boolean = false, failure: PlaybackFailure? = null) {
-        session?.setSessionExtras(PlaybackProtocol.extras(selected, resolving, preview, failure))
+    private fun publish() {
+        session?.setSessionExtras(PlaybackProtocol.extras(selected, resolving, preview, failure, queue))
+        if (::sessionPlayer.isInitialized) sessionPlayer.refreshQueue()
     }
 
-    private fun clearPlayback() {
+    private fun skip(forward: Boolean) {
+        val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
+        val song = if (forward) queue.next() else queue.previous()
+        song?.let { select(it, start) }
+    }
+
+    private fun stopCurrent() {
         requests.cancel()
         player.stop()
         player.clearMediaItems()
-        selected = null
+        player.playWhenReady = false
+        resolving = false
+        failure = null
         preview = false
         publish()
+    }
+
+    private fun clearPlayback() {
+        queue.clear()
+        stopCurrent()
     }
 
     private inner class SessionCallback : MediaSession.Callback {
@@ -124,25 +152,51 @@ class PlaybackService : MediaSessionService() {
             val ownApp = controller.uid == Process.myUid()
             if (!ownApp && !controller.isTrusted) return MediaSession.ConnectionResult.reject()
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
-            if (ownApp) commands.add(PlaybackProtocol.play).add(PlaybackProtocol.retry)
+            if (ownApp) PlaybackProtocol.queueCommands.forEach { commands.add(it) }
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands.build())
                 .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
-                    .remove(Player.COMMAND_SET_MEDIA_ITEM).remove(Player.COMMAND_CHANGE_MEDIA_ITEMS).build())
+                    .remove(Player.COMMAND_SET_MEDIA_ITEM).remove(Player.COMMAND_CHANGE_MEDIA_ITEMS)
+                    .remove(Player.COMMAND_SET_REPEAT_MODE).remove(Player.COMMAND_SET_SHUFFLE_MODE).build())
                 .build()
         }
 
         override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo,
             customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
-            if (controller.uid != Process.myUid()) return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
-            val song = when (customCommand.customAction) {
-                PlaybackProtocol.play.customAction -> PlaybackProtocol.song(args)
-                PlaybackProtocol.retry.customAction -> selected
-                else -> null
-            } ?: return Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
-            select(song)
-            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            val action = customCommand.customAction
+            if (controller.uid != Process.myUid()) {
+                return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+            }
+            val success = when (action) {
+                PlaybackProtocol.play.customAction -> PlaybackProtocol.song(args)?.let { select(queue.play(it)); true } ?: false
+                PlaybackProtocol.retry.customAction -> selected?.let { select(it); true } ?: false
+                PlaybackProtocol.enqueue.customAction -> PlaybackProtocol.song(args)?.let {
+                    val empty = selected == null
+                    queue.insertNext(it)
+                    if (empty) select(queue.current!!, start = false) else publish()
+                    true
+                } ?: false
+                PlaybackProtocol.select.customAction -> args.getString("hash")?.let(queue::select)?.let {
+                    select(it); true
+                } ?: false
+                PlaybackProtocol.remove.customAction -> args.getString("hash")?.let { hash ->
+                    val isCurrent = selected?.hash.equals(hash, ignoreCase = true)
+                    val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
+                    val successor = queue.remove(hash)
+                    if (isCurrent) {
+                        if (successor != null) select(successor, start) else stopCurrent()
+                    } else publish()
+                    true
+                } ?: false
+                PlaybackProtocol.clear.customAction -> { clearPlayback(); true }
+                PlaybackProtocol.mode.customAction -> PlaybackMode.entries.firstOrNull { it.name == args.getString("mode") }?.let {
+                    queue.setMode(it); publish(); true
+                } ?: false
+                else -> false
+            }
+            return Futures.immediateFuture(SessionResult(if (success) SessionResult.RESULT_SUCCESS else SessionError.ERROR_BAD_VALUE))
         }
+
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -151,7 +205,7 @@ class PlaybackService : MediaSessionService() {
         requests.cancel()
         scope.cancel()
         session?.release()
-        player.release()
+        sessionPlayer.release()
         session = null
         super.onDestroy()
     }

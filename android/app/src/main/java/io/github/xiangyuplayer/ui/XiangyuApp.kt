@@ -36,6 +36,9 @@ import io.github.xiangyuplayer.ui.search.SearchViewModel
 import io.github.xiangyuplayer.ui.playback.PlaybackViewModel
 import io.github.xiangyuplayer.ui.playback.MiniPlayer
 import io.github.xiangyuplayer.ui.playback.PlaybackScreen
+import io.github.xiangyuplayer.ui.playback.QueueSheet
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +78,7 @@ fun XiangyuApp(settings: SettingsStore) {
     val playback: PlaybackViewModel = viewModel()
     val playbackState by playback.state.collectAsStateWithLifecycle()
     var playbackVisible by rememberSaveable { mutableStateOf(false) }
+    var queueVisible by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(playbackState.song, playbackState.connected) {
         if (playbackState.connected && playbackState.song == null) playbackVisible = false
     }
@@ -86,12 +90,24 @@ fun XiangyuApp(settings: SettingsStore) {
     }
     val savedEndpoint by settings.apiBaseUrl.collectAsStateWithLifecycle(initialValue = null)
     val snackbar = remember { SnackbarHostState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(playbackState.actionMessage) {
+        playbackState.actionMessage?.let {
+            snackbar.showSnackbar(context.getString(it))
+            playback.dismissMessage()
+        }
+    }
+    if (queueVisible) {
+        QueueSheet(playbackState, playback::select, playback::remove, playback::clearQueue, playback::setMode) { queueVisible = false }
+    }
     if (loginVisible) {
         LoginScreen(authState, auth) { loginVisible = false }
         return
     }
     if (playbackVisible && playbackState.song != null) {
-        PlaybackScreen(playbackState, playback::toggle, playback::retry, playback::seekTo) { playbackVisible = false }
+        PlaybackScreen(playbackState, playback::toggle, playback::retry, playback::seekTo,
+            onPrevious = playback::previous, onNext = playback::next, onQueue = { queueVisible = true },
+            onMode = playback::setMode, snackbar = snackbar) { playbackVisible = false }
         return
     }
     BackHandler(enabled = destination != Destination.Home) {
@@ -102,11 +118,16 @@ fun XiangyuApp(settings: SettingsStore) {
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(if (destination == Destination.Settings) R.string.settings else R.string.app_name)) },
+                actions = {
+                    IconButton(onClick = { queueVisible = true }) {
+                        Icon(Icons.AutoMirrored.Filled.List, stringResource(R.string.playback_queue))
+                    }
+                },
             )
         },
         bottomBar = {
             Column {
-                MiniPlayer(playbackState, playback::toggle, playback::retry) { playbackVisible = true }
+                MiniPlayer(playbackState, playback::toggle, playback::retry, onQueue = { queueVisible = true }) { playbackVisible = true }
                 NavigationBar {
                     Destination.entries.forEach { item ->
                         NavigationBarItem(
@@ -128,7 +149,7 @@ fun XiangyuApp(settings: SettingsStore) {
             return@Scaffold
         }
         if (destination == Destination.Search) {
-            SearchScreen(searchState, search, searchRepository != null, Modifier.padding(insets), playback::play)
+            SearchScreen(searchState, search, searchRepository != null, Modifier.padding(insets), playback::play, playback::enqueue, playbackState.song?.hash)
             return@Scaffold
         }
         LazyColumn(

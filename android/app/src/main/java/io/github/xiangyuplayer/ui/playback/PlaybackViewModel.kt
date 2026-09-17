@@ -11,6 +11,9 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import io.github.xiangyuplayer.R
+import io.github.xiangyuplayer.playback.PlaybackMode
+import androidx.media3.session.SessionCommand
 import io.github.xiangyuplayer.domain.model.PlaybackFailure
 import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.playback.PlaybackProtocol
@@ -84,6 +87,31 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         } else observeResult(remote.sendCustomCommand(PlaybackProtocol.play, PlaybackProtocol.songBundle(song)))
     }
 
+    fun next() { controller?.seekToNextMediaItem() }
+    fun previous() { controller?.seekToPreviousMediaItem() }
+    fun enqueue(song: Song) = queueCommand(PlaybackProtocol.enqueue, PlaybackProtocol.songBundle(song), R.string.queue_added_next)
+    fun select(hash: String) = queueCommand(PlaybackProtocol.select, Bundle().apply { putString("hash", hash) })
+    fun remove(hash: String) = queueCommand(PlaybackProtocol.remove, Bundle().apply { putString("hash", hash) })
+    fun clearQueue() = queueCommand(PlaybackProtocol.clear)
+    fun setMode(mode: PlaybackMode) = queueCommand(PlaybackProtocol.mode, Bundle().apply { putString("mode", mode.name) })
+    fun dismissMessage() { mutable.update { it.copy(actionMessage = null) } }
+
+    private fun queueCommand(command: SessionCommand, args: Bundle = Bundle.EMPTY, successMessage: Int? = null) {
+        val remote = controller
+        if (remote == null) {
+            mutable.update { it.copy(actionMessage = R.string.queue_action_failed) }
+            connect()
+            return
+        }
+        val result = remote.sendCustomCommand(command, args)
+        result.addListener({
+            if (!disposed) {
+                val success = try { result.get().resultCode == SessionResult.RESULT_SUCCESS } catch (_: Exception) { false }
+                mutable.update { it.copy(actionMessage = if (success) successMessage else R.string.queue_action_failed) }
+            }
+        }, executor)
+    }
+
     fun toggle() {
         val remote = controller ?: return
         if (remote.playWhenReady && remote.playbackState != Player.STATE_ENDED) remote.pause()
@@ -126,6 +154,10 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         val resolving = extras.getBoolean("resolving")
         val duration = remote.duration.takeIf { it > 0 && !resolving && remote.currentMediaItem != null }
         mutable.value = PlaybackUiState(song = song, connected = true,
+            queue = PlaybackProtocol.queue(extras),
+            mode = PlaybackMode.entries.firstOrNull { it.name == extras.getString("mode") } ?: PlaybackMode.SEQUENTIAL,
+            hasNext = extras.getBoolean("hasNext"), hasPrevious = extras.getBoolean("hasPrevious"),
+            actionMessage = mutable.value.actionMessage,
             resolving = resolving, preview = extras.getBoolean("preview"),
             positionMs = if (duration != null) remote.currentPosition.coerceIn(0L, duration) else 0L,
             durationMs = duration,
@@ -134,7 +166,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
             buffering = remote.playbackState == Player.STATE_BUFFERING,
             playing = remote.playWhenReady && remote.playbackState != Player.STATE_ENDED,
             failure = extras.getString("failure")?.let { value -> PlaybackFailure.entries.firstOrNull { it.name == value } }
-                ?: if (remote.playerError != null) PlaybackFailure.PLAYER else null)
+                ?: if (!resolving && remote.playerError != null) PlaybackFailure.PLAYER else null)
     }
 
     override fun onCleared() {
@@ -147,6 +179,11 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
 data class PlaybackUiState(
     val song: Song? = null,
+    val queue: List<Song> = emptyList(),
+    val mode: PlaybackMode = PlaybackMode.SEQUENTIAL,
+    val hasNext: Boolean = false,
+    val hasPrevious: Boolean = false,
+    val actionMessage: Int? = null,
     val connected: Boolean = false,
     val resolving: Boolean = false,
     val buffering: Boolean = false,

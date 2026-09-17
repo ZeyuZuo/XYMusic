@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import coil.compose.SubcomposeAsyncImage
+import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.remote.AvatarImages
 import io.github.xiangyuplayer.domain.model.Song
@@ -36,6 +37,11 @@ fun PlaybackScreen(
     onToggle: () -> Unit,
     onRetry: () -> Unit,
     onSeek: (Song, Long) -> Unit,
+    onPrevious: () -> Unit = {},
+    onNext: () -> Unit = {},
+    onQueue: () -> Unit = {},
+    onMode: (PlaybackMode) -> Unit = {},
+    snackbar: SnackbarHostState = remember { SnackbarHostState() },
     onBack: () -> Unit,
 ) {
     val song = state.song ?: return
@@ -43,7 +49,7 @@ fun PlaybackScreen(
     val context = LocalContext.current
     val images = remember { AvatarImages.create(context) }
     DisposableEffect(images) { onDispose { images.shutdown() } }
-    Scaffold(topBar = {
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, topBar = {
         TopAppBar(title = { Text(stringResource(R.string.playback_now)) }, navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
@@ -77,20 +83,33 @@ fun PlaybackScreen(
                     color = if (state.failure != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             PlaybackProgress(state, onSeek, Modifier.widthIn(max = 560.dp).fillMaxWidth())
-            if (state.resolving) {
-                Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            } else {
-                FilledIconButton(
-                    onClick = if (state.failure != null) onRetry else onToggle,
-                    enabled = state.connected || state.failure != null,
-                    modifier = Modifier.size(72.dp),
-                ) {
-                    when {
-                        state.failure != null -> Icon(Icons.Default.Refresh, stringResource(R.string.playback_retry), Modifier.size(32.dp))
-                        state.playing -> Icon(painterResource(R.drawable.ic_pause), stringResource(R.string.playback_pause), Modifier.size(32.dp))
-                        else -> Icon(Icons.Default.PlayArrow, stringResource(R.string.playback_play), Modifier.size(32.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                IconButton(onClick = onPrevious, enabled = state.connected && state.hasPrevious, modifier = Modifier.size(48.dp)) {
+                    Icon(painterResource(R.drawable.ic_skip_previous), stringResource(R.string.playback_previous))
+                }
+                if (state.resolving) {
+                    Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else {
+                    FilledIconButton(
+                        onClick = if (state.failure != null) onRetry else onToggle,
+                        enabled = state.connected || state.failure != null,
+                        modifier = Modifier.size(72.dp),
+                    ) {
+                        when {
+                            state.failure != null -> Icon(Icons.Default.Refresh, stringResource(R.string.playback_retry), Modifier.size(32.dp))
+                            state.playing -> Icon(painterResource(R.drawable.ic_pause), stringResource(R.string.playback_pause), Modifier.size(32.dp))
+                            else -> Icon(Icons.Default.PlayArrow, stringResource(R.string.playback_play), Modifier.size(32.dp))
+                        }
                     }
                 }
+                IconButton(onClick = onNext, enabled = state.connected && state.hasNext, modifier = Modifier.size(48.dp)) {
+                    Icon(painterResource(R.drawable.ic_skip_next), stringResource(R.string.playback_next))
+                }
+            }
+            Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                PlaybackModeMenu(state.mode, state.connected, onMode)
+                TextButton(onClick = onQueue) { Text(stringResource(R.string.playback_queue)) }
             }
         }
     }
