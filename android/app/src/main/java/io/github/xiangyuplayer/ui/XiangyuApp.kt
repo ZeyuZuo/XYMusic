@@ -30,6 +30,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.LaunchedEffect
+import io.github.xiangyuplayer.ui.search.SearchScreen
+import io.github.xiangyuplayer.ui.search.SearchViewModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,7 +69,12 @@ fun XiangyuApp(settings: SettingsStore) {
     val authState by auth.state.collectAsStateWithLifecycle()
     var loginVisible by rememberSaveable { mutableStateOf(false) }
     var destination by rememberSaveable { mutableStateOf(Destination.Home) }
-    var query by rememberSaveable { mutableStateOf("") }
+    val search: SearchViewModel = viewModel()
+    val searchState by search.state.collectAsStateWithLifecycle()
+    val searchRepository = auth.searchRepository.takeIf { authState.ready && authState.account != null }
+    LaunchedEffect(searchRepository, authState.sessionGeneration, authState.account?.userId) {
+        search.bind(searchRepository, "${authState.sessionGeneration}:${authState.account?.userId}")
+    }
     val savedEndpoint by settings.apiBaseUrl.collectAsStateWithLifecycle(initialValue = null)
     val snackbar = remember { SnackbarHostState() }
     if (loginVisible) {
@@ -103,6 +111,10 @@ fun XiangyuApp(settings: SettingsStore) {
             }
             return@Scaffold
         }
+        if (destination == Destination.Search) {
+            SearchScreen(searchState, search, searchRepository != null, Modifier.padding(insets))
+            return@Scaffold
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(insets),
             contentPadding = PaddingValues(24.dp),
@@ -113,21 +125,7 @@ fun XiangyuApp(settings: SettingsStore) {
                     item { EmptyCard(Icons.Default.Home, R.string.daily_recommend, R.string.recommend_pending) }
                     item { EmptyCard(Icons.Default.Favorite, R.string.personal_fm, R.string.recommend_pending) }
                 }
-                Destination.Search -> {
-                    item { Text(stringResource(R.string.search_title), style = MaterialTheme.typography.headlineMedium) }
-                    item {
-                        OutlinedTextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(R.string.search_hint)) },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(20.dp),
-                        )
-                    }
-                    item { EmptyCard(Icons.Default.Search, R.string.search_pending, R.string.search_pending_detail) }
-                }
+                Destination.Search -> Unit
                 Destination.Library -> {
                     item { Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineMedium) }
                     item { EmptyCard(Icons.Default.Favorite, R.string.no_library, R.string.no_library_detail) }

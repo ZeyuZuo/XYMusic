@@ -17,7 +17,7 @@
               MediaController → PlaybackService → ExoPlayer → 音频 CDN
 ```
 
-当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；尚待真实账号联调。其余音乐页面、歌曲模型和播放服务仍为骨架，MediaController 与搜索播放映射尚未接通。
+当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；播放服务仍为骨架，MediaController 与播放地址解析尚未接通。
 
 `android/app/src/main/java/io/github/xiangyuplayer/`：
 

@@ -10,4 +10,6 @@ data class Song(
     val albumTitle: String? = null,
     val durationMs: Long? = null,
     val coverUrl: String? = null,
+    val source: String? = null,
+    val sourceId: String? = null,
 )
