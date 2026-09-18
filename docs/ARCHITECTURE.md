@@ -17,7 +17,7 @@
               MediaController → PlaybackService → ExoPlayer → 音频 CDN
 ```
 
-当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；基础单曲点播已接通 MediaController 与播放地址解析，服务独立观察会话变化。完整播放页已接入实际进度与拖动定位；本地队列、上下首及三种播放模式已实现，本地恢复和有限地址刷新已实现，歌词尚未实现。
+当前登录链路已包含 AuthViewModel、AuthRepository、JSON 必填字段校验与 Keystore 加密会话存储；用户已反馈登录正常，恢复与续期仍需验收。SearchViewModel / SearchRepository 已接通三类搜索，复用当前账号客户端；基础单曲点播已接通 MediaController 与播放地址解析，服务独立观察会话变化。完整播放页已接入实际进度与拖动定位；本地队列、上下首及三种播放模式已实现，本地恢复和有限地址刷新已实现，基础 LRC 歌词已接入独立数据层和 ViewModel。
 
 `android/app/src/main/java/io/github/xiangyuplayer/`：
 
@@ -66,3 +66,8 @@ PlaybackQueue 只保存歌曲元数据、当前项和遍历顺序，由 Playback
 PlaybackStateStore 在 IO 协程中串行、原子写入队列快照，PlaybackSnapshotCodec 校验归属、版本和字段结构。会话缓存标识保存在加密会话中，播放文件只保存该不含认证内容的随机标识；写入与退出清理共用 SessionStore 的锁。服务在会话与快照加载后恢复暂停状态，通过会话附加状态向界面提供待恢复进度。实际音频只在用户播放时请求，QueueSessionPlayer 同时处理标准播放/停止命令。
 
 PlaybackRecovery 限制每次明确播放或手动重试最多刷新一次可能失效的地址；HTTP 401/403/404/410 才触发新解析，解析仍遵守账号权限。保存、解析与播放器生命周期分开管理；网络恢复不自动触发播放。
+
+
+## 基础歌词
+
+LyricsViewModel 随完整播放页歌曲与会话变化加载歌词；LyricsRepository 负责搜索和下载，LrcParser 在 IO 上解析原曲时间轴。歌词不持有播放器，点击行最终仍通过 PlaybackViewModel / MediaController 定位。PlaybackService 发布并保存试听起点，UI 以原曲时间高亮、以片段时间定位；范围外跳转禁用，旧记录缺失起点时等待重新解析。

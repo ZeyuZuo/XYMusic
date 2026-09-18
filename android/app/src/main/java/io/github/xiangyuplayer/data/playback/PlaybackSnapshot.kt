@@ -12,6 +12,7 @@ data class PlaybackSnapshot(
     val durationMs: Long?,
     val preview: Boolean,
     val version: Int = 1,
+    val previewStartMs: Long? = null,
 )
 
 internal object PlaybackSnapshotCodec {
@@ -23,6 +24,7 @@ internal object PlaybackSnapshotCodec {
         val queue = snapshot.queue
         val keys = queue.songs.map { it.hash.lowercase() }
         require(snapshot.version == 1 && snapshot.owner == owner)
+        require(snapshot.previewStartMs == null || snapshot.previewStartMs >= 0)
         require(snapshot.positionMs >= 0 && (snapshot.durationMs == null || snapshot.durationMs > 0))
         require(queue.mode in PlaybackMode.entries && keys.toSet().size == keys.size)
         require(queue.order.size == keys.size && queue.order.toSet() == keys.toSet())

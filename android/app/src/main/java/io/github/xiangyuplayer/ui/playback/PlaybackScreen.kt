@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +28,8 @@ import coil.compose.SubcomposeAsyncImage
 import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.remote.AvatarImages
+import io.github.xiangyuplayer.ui.lyrics.LyricsPanel
+import io.github.xiangyuplayer.ui.lyrics.LyricsUiState
 import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.ui.theme.XiangyuTheme
 
@@ -42,9 +45,12 @@ fun PlaybackScreen(
     onQueue: () -> Unit = {},
     onMode: (PlaybackMode) -> Unit = {},
     snackbar: SnackbarHostState = remember { SnackbarHostState() },
+    lyrics: LyricsUiState = LyricsUiState(),
+    onLyricsRetry: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     val song = state.song ?: return
+    var showLyrics by rememberSaveable { mutableStateOf(false) }
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val images = remember { AvatarImages.create(context) }
@@ -61,7 +67,13 @@ fun PlaybackScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Surface(
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !showLyrics, onClick = { showLyrics = false }, label = { Text(stringResource(R.string.playback_cover)) })
+                FilterChip(selected = showLyrics, onClick = { showLyrics = true }, label = { Text(stringResource(R.string.lyrics_title)) })
+            }
+            if (showLyrics) {
+                key(song.hash) { LyricsPanel(state, lyrics, onLyricsRetry, onSeek) }
+            } else Surface(
                 modifier = Modifier.widthIn(max = 400.dp).fillMaxWidth().aspectRatio(1f)
                     .clip(RoundedCornerShape(24.dp)),
                 color = MaterialTheme.colorScheme.surfaceContainer,

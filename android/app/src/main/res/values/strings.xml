@@ -148,4 +148,15 @@
     <string name="mode_repeat_one">单曲循环</string>
     <string name="playback_resume_ready">已恢复，点击播放继续。</string>
     <string name="playback_storage_error">播放记录暂时无法读写，重启后可能无法恢复最新进度。</string>
+    <string name="playback_cover">封面</string>
+    <string name="lyrics_title">歌词</string>
+    <string name="lyrics_loading">正在加载歌词…</string>
+    <string name="lyrics_empty">暂无歌词</string>
+    <string name="lyrics_account">登录后可加载歌词</string>
+    <string name="lyrics_network">歌词加载失败，请检查网络后重试</string>
+    <string name="lyrics_invalid">暂时无法识别此歌曲的歌词</string>
+    <string name="lyrics_retry">重试歌词</string>
+    <string name="lyrics_follow">跟随当前歌词</string>
+    <string name="lyrics_current">当前歌词</string>
+    <string name="lyrics_preview_hint">仅可跳转到试听范围内的歌词</string>
 </resources>

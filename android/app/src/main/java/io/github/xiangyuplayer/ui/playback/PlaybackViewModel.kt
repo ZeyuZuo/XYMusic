@@ -164,7 +164,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
             needsSource = needsSource, storageError = extras.getBoolean("storageError"),
             resolving = resolving, preview = extras.getBoolean("preview"),
             positionMs = if (needsSource || resolving) savedPosition else if (duration != null) remote.currentPosition.coerceIn(0L, duration) else 0L,
-            durationMs = duration,
+            durationMs = duration, previewStartMs = if (extras.containsKey("previewStartMs")) extras.getLong("previewStartMs") else null,
             seekable = !needsSource && !resolving && duration != null && remote.isCurrentMediaItemSeekable && remote.playerError == null &&
                 remote.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
             buffering = remote.playbackState == Player.STATE_BUFFERING,
@@ -193,6 +193,7 @@ data class PlaybackUiState(
     val buffering: Boolean = false,
     val playing: Boolean = false,
     val preview: Boolean = false,
+    val previewStartMs: Long? = null,
     val failure: PlaybackFailure? = null,
     val positionMs: Long = 0L,
     val durationMs: Long? = null,

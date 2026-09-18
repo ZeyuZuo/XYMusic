@@ -63,6 +63,7 @@ class PlaybackService : MediaSessionService() {
     private var resolving = false
     private var failure: PlaybackFailure? = null
     private var preview = false
+    private var previewStartMs: Long? = 0L
     private lateinit var stateStore: PlaybackStateStore
     private val recovery = PlaybackRecovery()
     private var savedPosition = 0L
@@ -154,6 +155,7 @@ class PlaybackService : MediaSessionService() {
                             savedPosition = snapshot.positionMs
                             savedDuration = snapshot.durationMs
                             preview = snapshot.preview
+                            previewStartMs = if (snapshot.preview) snapshot.previewStartMs else 0L
                             needsSource = selected != null
                         }
                     }
@@ -184,7 +186,7 @@ class PlaybackService : MediaSessionService() {
         val owner = account?.saved?.playbackId ?: return
         if (!accountReady.isCompleted) return
         stateStore.save(PlaybackSnapshot(owner, queue.snapshot(), if (selected != null) position() else 0,
-            if (selected != null) duration() else null, preview))
+            if (selected != null) duration() else null, preview, previewStartMs = previewStartMs))
     }
 
     private fun resume(): Boolean {
@@ -224,7 +226,7 @@ class PlaybackService : MediaSessionService() {
         player.stop()
         player.clearMediaItems()
         player.playWhenReady = start
-        if (resumeMs == 0L) preview = false
+        if (resumeMs == 0L) { preview = false; previewStartMs = 0 }
         changing = false
         publish()
         requests.play(song)
@@ -232,6 +234,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun startPlayback(song: Song, source: AudioSource) {
         preview = source.access == PlaybackAccess.PREVIEW
+        previewStartMs = source.previewStartMs
         val title = if (preview) getString(R.string.playback_preview_title, song.title) else song.title
         val metadata = MediaMetadata.Builder().setTitle(title).setArtist(song.artists.joinToString(" / "))
             .setAlbumTitle(song.albumTitle).setArtworkUri(song.coverUrl?.let(Uri::parse))
@@ -255,6 +258,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun publish(save: Boolean = true) {
         session?.setSessionExtras(PlaybackProtocol.extras(selected, resolving, preview, failure, queue).apply {
+            previewStartMs?.let { putLong("previewStartMs", it) }
             putBoolean("needsSource", needsSource)
             putLong("savedPosition", savedPosition)
             savedDuration?.let { putLong("savedDuration", it) }
@@ -280,6 +284,7 @@ class PlaybackService : MediaSessionService() {
         resolving = false
         failure = null
         preview = false
+        previewStartMs = 0
         savedPosition = 0
         savedDuration = null
         needsSource = false

@@ -46,11 +46,6 @@ interface KuGouApi {
     @GET("search/lyric")
     suspend fun searchLyrics(@Query("hash") hash: String): JsonObject
 
-    @GET("lyric")
-    suspend fun lyrics(
-        @Query("id") id: String,
-        @Query("accesskey") accessKey: String,
-        @Query("fmt") format: String = "lrc",
-        @Query("decode") decode: Boolean = true,
-    ): JsonObject
+    @POST("lyric")
+    suspend fun lyrics(@Body body: Map<String, String>): JsonObject
 }

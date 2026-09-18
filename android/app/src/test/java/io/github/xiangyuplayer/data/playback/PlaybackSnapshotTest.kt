@@ -18,9 +18,11 @@ class PlaybackSnapshotTest {
     }
 
     @Test fun roundTripRestoresCurrentPositionAndExactShuffleTraversal() {
-        val original = snapshot()
+        val original = snapshot().copy(preview = true, previewStartMs = 65_700)
         val restored = PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(original), original.owner)!!
         assertEquals(original, restored)
+        val legacy = PlaybackSnapshotCodec.encode(original).replace(",\"previewStartMs\":65700", "")
+        assertNull(PlaybackSnapshotCodec.decode(legacy, original.owner)!!.previewStartMs)
         val queue = PlaybackQueue(Random(99))
         queue.restore(restored.queue)
         assertEquals(original.queue.current, queue.current!!.hash)

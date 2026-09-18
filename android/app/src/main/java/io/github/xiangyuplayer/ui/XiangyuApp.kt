@@ -36,6 +36,7 @@ import io.github.xiangyuplayer.ui.search.SearchViewModel
 import io.github.xiangyuplayer.ui.playback.PlaybackViewModel
 import io.github.xiangyuplayer.ui.playback.MiniPlayer
 import io.github.xiangyuplayer.ui.playback.PlaybackScreen
+import io.github.xiangyuplayer.ui.lyrics.LyricsViewModel
 import io.github.xiangyuplayer.ui.playback.QueueSheet
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.IconButton
@@ -82,6 +83,11 @@ fun XiangyuApp(settings: SettingsStore) {
     LaunchedEffect(playbackState.song, playbackState.connected) {
         if (playbackState.connected && playbackState.song == null) playbackVisible = false
     }
+    val lyrics: LyricsViewModel = viewModel()
+    val lyricsState by lyrics.state.collectAsStateWithLifecycle()
+    LaunchedEffect(playbackVisible, playbackState.song?.hash) {
+        lyrics.select(playbackState.song?.hash.takeIf { playbackVisible })
+    }
     val search: SearchViewModel = viewModel()
     val searchState by search.state.collectAsStateWithLifecycle()
     val searchRepository = auth.searchRepository.takeIf { authState.ready && authState.account != null }
@@ -107,7 +113,7 @@ fun XiangyuApp(settings: SettingsStore) {
     if (playbackVisible && playbackState.song != null) {
         PlaybackScreen(playbackState, playback::toggle, playback::retry, playback::seekTo,
             onPrevious = playback::previous, onNext = playback::next, onQueue = { queueVisible = true },
-            onMode = playback::setMode, snackbar = snackbar) { playbackVisible = false }
+            onMode = playback::setMode, snackbar = snackbar, lyrics = lyricsState, onLyricsRetry = lyrics::retry) { playbackVisible = false }
         return
     }
     BackHandler(enabled = destination != Destination.Home) {
