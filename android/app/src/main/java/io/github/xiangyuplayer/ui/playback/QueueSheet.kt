@@ -36,13 +36,14 @@ fun QueueSheet(state: PlaybackUiState, onSelect: (String) -> Unit, onRemove: (St
             state.actionMessage?.let { Text(stringResource(it), Modifier.padding(horizontal = 16.dp)) }
             if (state.queue.isEmpty()) Text(stringResource(R.string.queue_empty), Modifier.padding(24.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false)) {
-                items(state.queue, key = { it.hash.lowercase() }) { song ->
-                    val current = song.hash.equals(state.song?.hash, ignoreCase = true)
+                items(state.queue, key = { it.entryId }) { entry ->
+                    val song = entry.song
+                    val current = entry.entryId == state.currentEntryId
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).heightIn(min = 64.dp)
                             .semantics { selected = current }
                             .clickable(enabled = state.connected, role = Role.Button,
-                                onClickLabel = stringResource(R.string.playback_play_song, song.title)) { onSelect(song.hash) }
+                                onClickLabel = stringResource(R.string.playback_play_song, song.title)) { onSelect(entry.entryId) }
                             .padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(song.title, style = MaterialTheme.typography.titleSmall,
                                 color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
@@ -50,7 +51,7 @@ fun QueueSheet(state: PlaybackUiState, onSelect: (String) -> Unit, onRemove: (St
                             if (current) Text(stringResource(R.string.queue_current), style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary)
                         }
-                        IconButton(onClick = { onRemove(song.hash) }, enabled = state.connected, modifier = Modifier.size(48.dp)) {
+                        IconButton(onClick = { onRemove(entry.entryId) }, enabled = state.connected, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Close, stringResource(R.string.queue_remove_song, song.title))
                         }
                     }

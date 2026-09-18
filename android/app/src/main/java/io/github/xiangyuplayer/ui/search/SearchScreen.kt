@@ -24,7 +24,7 @@ import io.github.xiangyuplayer.data.search.SearchCategory
 import io.github.xiangyuplayer.data.search.SearchResult
 
 @Composable
-fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean, modifier: Modifier = Modifier, onPlay: (Song) -> Unit, onNext: (Song) -> Unit, currentHash: String?) {
+fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean, modifier: Modifier = Modifier, onPlay: (Song) -> Unit, onNext: (Song) -> Unit) {
     val listState = rememberLazyListState()
     LaunchedEffect(state.query, state.category) { listState.scrollToItem(0) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -68,7 +68,7 @@ fun SearchScreen(state: SearchState, model: SearchViewModel, available: Boolean,
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(state.items) { result ->
-                    SearchResultRow(result, onPlay, onNext, currentHash)
+                    SearchResultRow(result, onPlay, onNext)
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 }
                 if (state.loading) item {
@@ -102,7 +102,7 @@ private fun StatusText(message: Int) {
 }
 
 @Composable
-private fun SearchResultRow(result: SearchResult, onPlay: (Song) -> Unit, onNext: (Song) -> Unit, currentHash: String?) {
+private fun SearchResultRow(result: SearchResult, onPlay: (Song) -> Unit, onNext: (Song) -> Unit) {
     // Variable height and unrestricted wrapping preserve long titles and all artist names at large font sizes.
     val playLabel = stringResource(R.string.playback_play_song, result.title)
     val interaction = result.song?.let { song ->
@@ -136,7 +136,6 @@ private fun SearchResultRow(result: SearchResult, onPlay: (Song) -> Unit, onNext
                     DropdownMenuItem(text = { Text(stringResource(R.string.playback_play)) },
                         onClick = { expanded = false; onPlay(song) })
                     DropdownMenuItem(text = { Text(stringResource(R.string.queue_play_next)) },
-                        enabled = !song.hash.equals(currentHash, ignoreCase = true),
                         onClick = { expanded = false; onNext(song) })
                 }
             }

@@ -18,7 +18,10 @@ internal object PlaybackProtocol {
     val queueCommands = listOf(play, retry, enqueue, select, remove, clear, mode)
 
     @Suppress("DEPRECATION")
-    fun queue(bundle: Bundle): List<Song> = bundle.getParcelableArrayList<Bundle>("queue")?.mapNotNull(::song).orEmpty()
+    fun queue(bundle: Bundle): List<QueueEntry> = bundle.getParcelableArrayList<Bundle>("queue")?.mapNotNull { item ->
+        val id = item.getString("entryId")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        song(item)?.let { QueueEntry(id, it) }
+    }.orEmpty()
 
     fun songBundle(song: Song) = Bundle().apply {
         putString("hash", song.hash)
@@ -44,7 +47,8 @@ internal object PlaybackProtocol {
 
     fun extras(song: Song?, resolving: Boolean = false, preview: Boolean = false, failure: PlaybackFailure? = null, queue: PlaybackQueue) =
         Bundle().apply {
-            putParcelableArrayList("queue", ArrayList(queue.songs.map(::songBundle)))
+            putParcelableArrayList("queue", ArrayList(queue.entries.map { entry -> songBundle(entry.song).apply { putString("entryId", entry.entryId) } }))
+            putString("currentEntryId", queue.current?.entryId)
             putString("mode", queue.mode.name)
             putBoolean("hasNext", queue.hasNext)
             putBoolean("hasPrevious", queue.hasPrevious)

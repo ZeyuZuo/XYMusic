@@ -155,7 +155,7 @@ fun XiangyuApp(settings: SettingsStore) {
             return@Scaffold
         }
         if (destination == Destination.Search) {
-            SearchScreen(searchState, search, searchRepository != null, Modifier.padding(insets), playback::play, playback::enqueue, playbackState.song?.hash)
+            SearchScreen(searchState, search, searchRepository != null, Modifier.padding(insets), playback::play, playback::enqueue)
             return@Scaffold
         }
         LazyColumn(

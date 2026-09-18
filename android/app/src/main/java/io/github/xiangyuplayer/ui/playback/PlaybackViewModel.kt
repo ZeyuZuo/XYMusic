@@ -33,6 +33,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     private var future: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private var pending: Song? = null
+    private var pendingRetryEntryId: String? = null
     private var disposed = false
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) { controller?.let(::update) }
@@ -70,7 +71,12 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
                 controller = connected
                 connected.addListener(playerListener)
                 update(connected)
-                pending?.let { pending = null; play(it) }
+                val retryEntryId = pendingRetryEntryId
+                pendingRetryEntryId = null
+                val pendingSong = pending
+                pending = null
+                if (pendingSong != null) play(pendingSong)
+                else if (retryEntryId != null && retryEntryId == mutable.value.currentEntryId) retry()
             } catch (_: Exception) {
                 future = null
                 mutable.update { it.copy(resolving = false, connected = false, failure = PlaybackFailure.PLAYER) }
@@ -79,6 +85,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun play(song: Song) {
+        pendingRetryEntryId = null
         val remote = controller
         if (remote == null) {
             pending = song
@@ -90,8 +97,8 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }
     fun enqueue(song: Song) = queueCommand(PlaybackProtocol.enqueue, PlaybackProtocol.songBundle(song), R.string.queue_added_next)
-    fun select(hash: String) = queueCommand(PlaybackProtocol.select, Bundle().apply { putString("hash", hash) })
-    fun remove(hash: String) = queueCommand(PlaybackProtocol.remove, Bundle().apply { putString("hash", hash) })
+    fun select(entryId: String) = queueCommand(PlaybackProtocol.select, Bundle().apply { putString("entryId", entryId) })
+    fun remove(entryId: String) = queueCommand(PlaybackProtocol.remove, Bundle().apply { putString("entryId", entryId) })
     fun clearQueue() = queueCommand(PlaybackProtocol.clear)
     fun setMode(mode: PlaybackMode) = queueCommand(PlaybackProtocol.mode, Bundle().apply { putString("mode", mode.name) })
     fun dismissMessage() { mutable.update { it.copy(actionMessage = null) } }
@@ -123,8 +130,10 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
     fun retry() {
         val remote = controller
-        if (remote == null) mutable.value.song?.let(::play)
-        else observeResult(remote.sendCustomCommand(PlaybackProtocol.retry, Bundle.EMPTY))
+        if (remote == null) {
+            pendingRetryEntryId = mutable.value.currentEntryId
+            connect()
+        } else observeResult(remote.sendCustomCommand(PlaybackProtocol.retry, Bundle.EMPTY))
     }
 
     fun seekTo(song: Song, positionMs: Long) {
@@ -157,7 +166,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         val savedDuration = if (extras.containsKey("savedDuration")) extras.getLong("savedDuration") else null
         val duration = if (needsSource || resolving) savedDuration else remote.duration.takeIf { it > 0 && !resolving && remote.currentMediaItem != null }
         mutable.value = PlaybackUiState(song = song, connected = true,
-            queue = PlaybackProtocol.queue(extras),
+            queue = PlaybackProtocol.queue(extras), currentEntryId = extras.getString("currentEntryId"),
             mode = PlaybackMode.entries.firstOrNull { it.name == extras.getString("mode") } ?: PlaybackMode.SEQUENTIAL,
             hasNext = extras.getBoolean("hasNext"), hasPrevious = extras.getBoolean("hasPrevious"),
             actionMessage = mutable.value.actionMessage,
@@ -183,7 +192,8 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
 data class PlaybackUiState(
     val song: Song? = null,
-    val queue: List<Song> = emptyList(),
+    val queue: List<io.github.xiangyuplayer.playback.QueueEntry> = emptyList(),
+    val currentEntryId: String? = null,
     val mode: PlaybackMode = PlaybackMode.SEQUENTIAL,
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,

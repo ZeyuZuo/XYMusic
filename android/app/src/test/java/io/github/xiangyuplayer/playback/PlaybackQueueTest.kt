@@ -8,96 +8,116 @@ import org.junit.Test
 class PlaybackQueueTest {
     private fun song(id: String) = Song(id, id, emptyList())
 
-    @Test fun selectingSearchSongOnlyInsertsThatSongAndRetainsExistingQueue() {
+    @Test fun searchAlwaysCreatesANewOccurrenceAndPreservesOriginal() {
         val queue = PlaybackQueue()
-        queue.play(song("a"))
-        queue.insertNext(song("c"))
-        queue.play(song("b"))
-        assertEquals(listOf("a", "b", "c"), queue.songs.map { it.hash })
-        assertEquals("b", queue.current?.hash)
-        queue.play(song("A"))
-        assertEquals(3, queue.songs.size)
-        assertEquals("a", queue.current?.hash)
-        assertEquals("b", queue.next()?.hash)
+        val a = queue.play(song("a"))
+        val c = queue.insertNext(song("c"))
+        val b = queue.play(song("b"))
+        val repeated = queue.play(song("c"))
+        assertEquals(listOf(a, b, repeated, c), queue.entries)
+        assertNotEquals(c.entryId, repeated.entryId)
+        assertEquals(repeated, queue.current)
+        assertEquals(c, queue.next())
     }
 
-    @Test fun nextInsertionMovesExistingSongWithoutInterruptingCurrent() {
+    @Test fun nextInsertionAllowsCurrentAndExistingSongsWithoutChangingSelection() {
         val queue = PlaybackQueue()
-        listOf("a", "b", "c").forEach { queue.play(song(it)) }
-        queue.select("a")
-        queue.insertNext(song("c"))
-        assertEquals("a", queue.current?.hash)
-        assertEquals(listOf("a", "c", "b"), queue.songs.map { it.hash })
-        queue.insertNext(song("a"))
-        assertEquals(3, queue.songs.size)
-        assertEquals("c", queue.next()?.hash)
+        val a = queue.play(song("a"))
+        val b = queue.insertNext(song("b"))
+        val newB = queue.insertNext(song("b"))
+        val newA = queue.insertNext(song("a"))
+        assertEquals(a, queue.current)
+        assertEquals(listOf(a, newA, newB, b), queue.entries)
+        assertEquals(newA, queue.next())
     }
 
     @Test fun sequentialStopsAtEndAndPreviousDoesNotWrap() {
         val queue = PlaybackQueue()
-        queue.play(song("a")); queue.insertNext(song("b"))
+        val a = queue.play(song("a")); val b = queue.insertNext(song("b"))
         assertNull(queue.previous())
-        assertEquals("b", queue.next(automatic = true)?.hash)
+        assertEquals(b, queue.next(automatic = true))
         assertNull(queue.next(automatic = true))
-        assertEquals("b", queue.current?.hash)
-        assertEquals("a", queue.previous()?.hash)
+        assertEquals(b, queue.current)
+        assertEquals(a, queue.previous())
     }
 
     @Test fun repeatOneOnlyChangesAutomaticAdvance() {
         val queue = PlaybackQueue()
-        queue.play(song("a")); queue.insertNext(song("b"))
+        val a = queue.play(song("a")); val b = queue.insertNext(song("a"))
         queue.setMode(PlaybackMode.REPEAT_ONE)
-        assertEquals("a", queue.next(automatic = true)?.hash)
-        assertEquals("b", queue.next()?.hash)
-        assertEquals("b", queue.next(automatic = true)?.hash)
+        assertEquals(a, queue.next(automatic = true))
+        assertEquals(b, queue.next())
+        assertEquals(b, queue.next(automatic = true))
     }
 
-    @Test fun shuffleVisitsEachSongOnceAndPreviousRetracesOrder() {
+    @Test fun shuffleVisitsEachOccurrenceOnceAndPreviousRetracesOrder() {
         val queue = PlaybackQueue(Random(7))
-        listOf("a", "b", "c", "d", "e").forEach { queue.play(song(it)) }
-        queue.select("c")
+        queue.replace(List(5) { song("same") }, 2)
         queue.setMode(PlaybackMode.SHUFFLE)
-        val visited = mutableListOf(queue.current!!.hash)
-        while (queue.hasNext) visited.add(queue.next()!!.hash)
-        assertEquals(5, visited.toSet().size)
+        val visited = mutableListOf(queue.current!!.entryId)
+        while (queue.hasNext) visited.add(queue.next()!!.entryId)
+        assertEquals(queue.entries.map { it.entryId }.toSet(), visited.toSet())
         assertNull(queue.next(automatic = true))
-        for (id in visited.dropLast(1).reversed()) assertEquals(id, queue.previous()?.hash)
+        for (id in visited.dropLast(1).reversed()) assertEquals(id, queue.previous()?.entryId)
         assertNull(queue.previous())
     }
 
     @Test fun explicitNextTakesPriorityInShuffleAndModeChangesKeepCurrent() {
         val queue = PlaybackQueue(Random(4))
-        listOf("a", "b", "c", "d").forEach { queue.play(song(it)) }
-        queue.select("a"); queue.setMode(PlaybackMode.SHUFFLE)
-        queue.insertNext(song("d"))
-        assertEquals("d", queue.next()?.hash)
-        assertEquals("a", queue.previous()?.hash)
+        val a = queue.replace(listOf(song("a"), song("b"), song("a")), 0)
+        queue.setMode(PlaybackMode.SHUFFLE)
+        val inserted = queue.insertNext(song("a"))
+        assertEquals(inserted, queue.next())
+        assertEquals(a, queue.previous())
         queue.setMode(PlaybackMode.SEQUENTIAL)
-        assertEquals("a", queue.current?.hash)
-        assertEquals("d", queue.next()?.hash)
+        assertEquals(a, queue.current)
+        assertEquals(inserted, queue.next())
     }
 
-    @Test fun removingCurrentChoosesSuccessorAndRemovingTailLeavesOthersAvailable() {
+    @Test fun selectionAndRemovalTargetOnlyTheSpecifiedOccurrence() {
         val queue = PlaybackQueue()
-        listOf("a", "b", "c").forEach { queue.play(song(it)) }
-        queue.select("b")
-        assertEquals("c", queue.remove("b")?.hash)
-        assertNull(queue.remove("c"))
+        queue.replace(List(3) { song("same") }, 0)
+        val (a, b, c) = queue.entries
+        assertEquals(b, queue.select(b.entryId))
+        assertNull(queue.select("missing"))
+        assertNull(queue.remove(a.entryId))
+        assertEquals(b, queue.current)
+        assertEquals(c, queue.remove(b.entryId))
+        assertEquals(listOf(c), queue.entries)
+        queue.insertNext(song("other"))
+        queue.select(queue.entries.last().entryId)
+        queue.remove(queue.current!!.entryId)
         assertNull(queue.current)
-        assertEquals(listOf("a"), queue.songs.map { it.hash })
-        assertEquals("a", queue.select("a")?.hash)
-        queue.remove("missing")
-        assertEquals("a", queue.current?.hash)
+        assertEquals(listOf(c), queue.entries)
     }
 
     @Test fun clearingQueueRemovesSelectionAndTraversalInEveryMode() {
         val queue = PlaybackQueue(Random(2))
         queue.play(song("a")); queue.insertNext(song("b")); queue.setMode(PlaybackMode.SHUFFLE)
         queue.clear()
-        assertTrue(queue.songs.isEmpty()); assertNull(queue.current)
+        assertTrue(queue.entries.isEmpty()); assertNull(queue.current)
         assertNull(queue.next()); assertNull(queue.previous())
-        queue.insertNext(song("c"))
-        assertEquals("c", queue.current?.hash)
+        val c = queue.insertNext(song("c"))
+        assertEquals(c, queue.current)
         assertFalse(queue.hasNext); assertFalse(queue.hasPrevious)
+    }
+
+    @Test fun replacementPreservesOrderAndExactSelectedOccurrenceAndRejectsInvalidInputAtomically() {
+        val queue = PlaybackQueue()
+        queue.play(song("old")); queue.setMode(PlaybackMode.SHUFFLE)
+        val songs = listOf(song("a"), song("b"), song("a"))
+        val selected = queue.replace(songs, 2)
+        assertEquals(songs, queue.entries.map { it.song })
+        assertEquals(queue.entries[2], selected)
+        assertEquals(PlaybackMode.SEQUENTIAL, queue.mode)
+        val before = queue.snapshot()
+        listOf(-1, 3).forEach { index ->
+            assertThrows(IllegalArgumentException::class.java) { queue.replace(songs, index) }
+            assertEquals(before, queue.snapshot())
+        }
+        assertThrows(IllegalArgumentException::class.java) { queue.replace(emptyList(), 0) }
+        assertEquals(before, queue.snapshot())
+        assertThrows(IllegalArgumentException::class.java) { queue.restore(before.copy(order = listOf("missing"))) }
+        assertEquals(before, queue.snapshot())
     }
 }
