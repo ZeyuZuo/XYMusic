@@ -49,6 +49,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(AuthState())
     val state = mutable.asStateFlow()
     private var repository: AuthRepository? = null
+    val searchRepository get() = repository?.search
     private var action: Job? = null
     private var countdown: Job? = null
     private var profileJob: Job? = null

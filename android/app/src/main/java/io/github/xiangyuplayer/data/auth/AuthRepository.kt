@@ -48,6 +48,7 @@ object AuthResponse {
 /** One repository per endpoint. All operations are serialized by the owning ViewModel. */
 class AuthRepository(val endpoint: String, private val store: SessionPersistence) {
     private val client = KuGouClient(endpoint)
+    val search = io.github.xiangyuplayer.data.search.SearchRepository(client.api)
     private val url = ApiEndpoint.parse(endpoint, BuildConfig.DEBUG)
     private var deviceReady = false
 

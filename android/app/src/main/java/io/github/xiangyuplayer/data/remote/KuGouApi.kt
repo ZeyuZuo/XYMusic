@@ -40,16 +40,12 @@ interface KuGouApi {
         @Query("album_id") albumId: String? = null,
         @Query("album_audio_id") albumAudioId: String? = null,
         @Query("quality") quality: String = "128",
+        @Query("free_part") freePart: Int? = null,
     ): JsonObject
 
     @GET("search/lyric")
     suspend fun searchLyrics(@Query("hash") hash: String): JsonObject
 
-    @GET("lyric")
-    suspend fun lyrics(
-        @Query("id") id: String,
-        @Query("accesskey") accessKey: String,
-        @Query("fmt") format: String = "lrc",
-        @Query("decode") decode: Boolean = true,
-    ): JsonObject
+    @POST("lyric")
+    suspend fun lyrics(@Body body: Map<String, String>): JsonObject
 }
