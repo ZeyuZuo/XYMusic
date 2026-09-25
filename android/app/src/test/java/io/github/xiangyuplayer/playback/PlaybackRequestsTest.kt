@@ -23,24 +23,42 @@ class PlaybackRequestsTest {
         val played = mutableListOf<String>()
         val requests = PlaybackRequests(this, AudioSourceResolver { song ->
             suspendCoroutine { waiting[song.hash] = it }
-        }, { song, _ -> played += song.hash }, { fail("Unexpected failure") })
-        requests.play(song("old"))
+        }, { entryId, _, _ -> played += entryId }, { fail("Unexpected failure") })
+        requests.play("old-entry", song("old"))
         yield()
-        requests.play(song("new"))
+        requests.play("new-entry", song("new"))
         yield()
         waiting.getValue("new").resume(source)
         yield()
         waiting.getValue("old").resume(source)
         yield()
-        assertEquals(listOf("new"), played)
+        assertEquals(listOf("new-entry"), played)
+    }
+
+    @Test fun lateResponseOfTheSameHashCannotStartAPreviousOccurrence() = runBlocking {
+        val waiting = mutableListOf<Continuation<AudioSource>>()
+        val played = mutableListOf<String>()
+        val same = song("same")
+        val requests = PlaybackRequests(this, AudioSourceResolver {
+            suspendCoroutine { waiting.add(it) }
+        }, { entryId, _, _ -> played += entryId }, { fail("Unexpected failure") })
+        requests.play("first", same)
+        yield()
+        requests.play("second", same)
+        yield()
+        waiting[1].resume(source)
+        yield()
+        waiting[0].resume(source)
+        yield()
+        assertEquals(listOf("second"), played)
     }
 
     @Test fun accountInvalidationDiscardsEvenNonCooperativeResponse() = runBlocking {
         lateinit var response: Continuation<AudioSource>
         var played = false
         val requests = PlaybackRequests(this, AudioSourceResolver { suspendCoroutine { response = it } },
-            { _, _ -> played = true }, { fail("Cancellation is not an error") })
-        requests.play(song("old-account"))
+            { _, _, _ -> played = true }, { fail("Cancellation is not an error") })
+        requests.play("old-account", song("old-account"))
         yield()
         requests.cancel()
         response.resume(source)
@@ -51,8 +69,8 @@ class PlaybackRequestsTest {
     @Test fun expectedFailureKeepsItsMeaningWithoutExceptionText() = runBlocking {
         var failure: PlaybackFailure? = null
         val requests = PlaybackRequests(this, AudioSourceResolver { throw PlaybackException(PlaybackFailure.PERMISSION) },
-            { _, _ -> fail("Denied response cannot play") }, { failure = it })
-        requests.play(song("denied"))
+            { _, _, _ -> fail("Denied response cannot play") }, { failure = it })
+        requests.play("denied", song("denied"))
         yield()
         assertEquals(PlaybackFailure.PERMISSION, failure)
     }

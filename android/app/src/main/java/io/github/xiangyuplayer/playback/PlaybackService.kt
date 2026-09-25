@@ -59,6 +59,7 @@ class PlaybackService : MediaSessionService() {
     private lateinit var requests: PlaybackRequests
     private lateinit var sessionPlayer: QueueSessionPlayer
     private val queue = PlaybackQueue()
+    private val queueCommands = QueueCommands(queue)
     private val selected get() = queue.current?.song
     private var resolving = false
     private var failure: PlaybackFailure? = null
@@ -93,11 +94,11 @@ class PlaybackService : MediaSessionService() {
                 if (changing) return
                 val status = generateSequence<Throwable>(error) { it.cause }
                     .filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
-                val song = selected
                 savedPosition = position()
                 savedDuration = duration()
-                if (song != null && recovery.tryRefresh(status)) {
-                    select(song, player.playWhenReady, savedPosition, refreshing = true)
+                val entry = queue.current
+                if (entry != null && recovery.tryRefresh(status)) {
+                    playEntry(entry, player.playWhenReady, savedPosition, refreshing = true)
                 } else {
                     failure = PlaybackFailure.PLAYER
                     publish()
@@ -114,7 +115,7 @@ class PlaybackService : MediaSessionService() {
                     }
                 }
                 if (playbackState == Player.STATE_ENDED && player.playWhenReady && !resolving && failure == null) {
-                    queue.next(automatic = true)?.let { select(it.song) }
+                    queue.next(automatic = true)?.let { playEntry(it) }
                 }
             }
             override fun onEvents(player: Player, events: Player.Events) {
@@ -193,8 +194,9 @@ class PlaybackService : MediaSessionService() {
 
     private fun resume(): Boolean {
         if (account?.epoch != SessionStore.changes.value.accountEpoch) return true
-        if (needsSource && selected != null && !resolving) {
-            select(selected!!, start = true, resumeMs = savedPosition)
+        val entry = queue.current
+        if (needsSource && entry != null && !resolving) {
+            playEntry(entry, start = true, resumeMs = savedPosition)
             return true
         }
         return false
@@ -215,7 +217,8 @@ class PlaybackService : MediaSessionService() {
         publish()
     }
 
-    private fun select(song: Song, start: Boolean = true, resumeMs: Long = 0, refreshing: Boolean = false) {
+    private fun playEntry(entry: QueueEntry, start: Boolean = true, resumeMs: Long = 0, refreshing: Boolean = false) {
+        if (queue.current?.entryId != entry.entryId) return
         changing = true
         requests.cancel()
         if (!refreshing) recovery.reset()
@@ -231,17 +234,18 @@ class PlaybackService : MediaSessionService() {
         if (resumeMs == 0L) { preview = false; previewStartMs = 0 }
         changing = false
         publish()
-        requests.play(song)
+        requests.play(entry.entryId, entry.song)
     }
 
-    private fun startPlayback(song: Song, source: AudioSource) {
+    private fun startPlayback(entryId: String, song: Song, source: AudioSource) {
+        if (queue.current?.entryId != entryId) return
         preview = source.access == PlaybackAccess.PREVIEW
         previewStartMs = source.previewStartMs
         val title = if (preview) getString(R.string.playback_preview_title, song.title) else song.title
         val metadata = MediaMetadata.Builder().setTitle(title).setArtist(song.artists.joinToString(" / "))
             .setAlbumTitle(song.albumTitle).setArtworkUri(song.coverUrl?.let(Uri::parse))
             .setIsPlayable(true).setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC).build()
-        val item = MediaItem.Builder().setMediaId(queue.current!!.entryId).setUri(source.url).setMediaMetadata(metadata)
+        val item = MediaItem.Builder().setMediaId(entryId).setUri(source.url).setMediaMetadata(metadata)
         source.previewDurationMs?.let { duration ->
             item.setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
                 .setStartPositionMs(source.previewStartMs)
@@ -273,8 +277,28 @@ class PlaybackService : MediaSessionService() {
     private fun skip(forward: Boolean) {
         if (account?.epoch != SessionStore.changes.value.accountEpoch) return
         val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
-        val song = if (forward) queue.next() else queue.previous()
-        song?.let { select(it.song, start) }
+        val entry = if (forward) queue.next() else queue.previous()
+        entry?.let { playEntry(it, start) }
+    }
+
+    private fun apply(result: QueueCommands.Result): Boolean = when (result) {
+        is QueueCommands.Result.Play -> {
+            playEntry(result.entry, result.start, result.resumeMs)
+            true
+        }
+        QueueCommands.Result.Publish -> {
+            publish()
+            true
+        }
+        is QueueCommands.Result.Seek -> {
+            if (!resolving && failure == null && player.currentMediaItem != null) {
+                val duration = player.duration.takeIf { it > 0 }
+                player.seekTo(if (duration != null) result.positionMs.coerceIn(0L, duration) else result.positionMs.coerceAtLeast(0))
+            }
+            true
+        }
+        QueueCommands.Result.Ignored -> true
+        QueueCommands.Result.Invalid -> false
     }
 
     private fun stopCurrent() {
@@ -335,28 +359,29 @@ class PlaybackService : MediaSessionService() {
 
         private fun handleCommand(customCommand: SessionCommand, args: Bundle): SessionResult {
             val action = customCommand.customAction
-            if (action in listOf(PlaybackProtocol.play, PlaybackProtocol.retry, PlaybackProtocol.enqueue, PlaybackProtocol.select)
+            if (action in listOf(PlaybackProtocol.play, PlaybackProtocol.retry, PlaybackProtocol.enqueue,
+                    PlaybackProtocol.replace, PlaybackProtocol.select, PlaybackProtocol.seek)
                     .map { it.customAction } && account?.epoch != SessionStore.changes.value.accountEpoch) {
                 return SessionResult(SessionError.ERROR_PERMISSION_DENIED)
             }
             val success = when (action) {
-                PlaybackProtocol.play.customAction -> PlaybackProtocol.song(args)?.let { select(queue.play(it).song); true } ?: false
-                PlaybackProtocol.retry.customAction -> selected?.let { select(it, resumeMs = position()); true } ?: false
-                PlaybackProtocol.enqueue.customAction -> PlaybackProtocol.song(args)?.let {
-                    val empty = selected == null
-                    queue.insertNext(it)
-                    if (empty) select(queue.current!!.song, start = false) else publish()
-                    true
-                } ?: false
-                PlaybackProtocol.select.customAction -> args.getString("entryId")?.let(queue::select)?.let {
-                    select(it.song); true
-                } ?: false
-                PlaybackProtocol.remove.customAction -> args.getString("entryId")?.let { entryId ->
+                PlaybackProtocol.play.customAction ->
+                    PlaybackProtocol.song(args)?.let { apply(queueCommands.insertAndPlay(it)) } ?: false
+                PlaybackProtocol.retry.customAction -> apply(queueCommands.retry(PlaybackProtocol.entryId(args), position()))
+                PlaybackProtocol.enqueue.customAction ->
+                    PlaybackProtocol.song(args)?.let { apply(queueCommands.enqueueNext(it)) } ?: false
+                PlaybackProtocol.replace.customAction ->
+                    apply(queueCommands.replaceAndPlay(PlaybackProtocol.songs(args), PlaybackProtocol.selectedIndex(args)))
+                PlaybackProtocol.select.customAction -> apply(queueCommands.selectEntry(PlaybackProtocol.entryId(args)))
+                PlaybackProtocol.seek.customAction -> if (args.containsKey("positionMs")) {
+                    apply(queueCommands.seek(PlaybackProtocol.entryId(args), args.getLong("positionMs")))
+                } else false
+                PlaybackProtocol.remove.customAction -> PlaybackProtocol.entryId(args)?.let { entryId ->
                     val isCurrent = queue.current?.entryId == entryId
                     val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
                     val successor = queue.remove(entryId)
                     if (isCurrent) {
-                        if (successor != null) select(successor.song, start) else stopCurrent()
+                        if (successor != null) playEntry(successor, start) else stopCurrent()
                     } else publish()
                     true
                 } ?: false

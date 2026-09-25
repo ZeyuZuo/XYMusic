@@ -18,6 +18,7 @@ import io.github.xiangyuplayer.domain.model.PlaybackFailure
 import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.playback.PlaybackProtocol
 import io.github.xiangyuplayer.playback.PlaybackService
+import io.github.xiangyuplayer.playback.QueueEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -76,7 +77,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
                 val pendingSong = pending
                 pending = null
                 if (pendingSong != null) play(pendingSong)
-                else if (retryEntryId != null && retryEntryId == mutable.value.currentEntryId) retry()
+                else retryEntryId?.let(::sendRetry)
             } catch (_: Exception) {
                 future = null
                 mutable.update { it.copy(resolving = false, connected = false, failure = PlaybackFailure.PLAYER) }
@@ -97,8 +98,10 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }
     fun enqueue(song: Song) = queueCommand(PlaybackProtocol.enqueue, PlaybackProtocol.songBundle(song), R.string.queue_added_next)
-    fun select(entryId: String) = queueCommand(PlaybackProtocol.select, Bundle().apply { putString("entryId", entryId) })
-    fun remove(entryId: String) = queueCommand(PlaybackProtocol.remove, Bundle().apply { putString("entryId", entryId) })
+    fun replaceAndPlay(songs: List<Song>, selectedIndex: Int) =
+        queueCommand(PlaybackProtocol.replace, PlaybackProtocol.replaceBundle(songs, selectedIndex))
+    fun select(entryId: String) = queueCommand(PlaybackProtocol.select, PlaybackProtocol.entryBundle(entryId))
+    fun remove(entryId: String) = queueCommand(PlaybackProtocol.remove, PlaybackProtocol.entryBundle(entryId))
     fun clearQueue() = queueCommand(PlaybackProtocol.clear)
     fun setMode(mode: PlaybackMode) = queueCommand(PlaybackProtocol.mode, Bundle().apply { putString("mode", mode.name) })
     fun dismissMessage() { mutable.update { it.copy(actionMessage = null) } }
@@ -129,20 +132,26 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun retry() {
-        val remote = controller
-        if (remote == null) {
-            pendingRetryEntryId = mutable.value.currentEntryId
-            connect()
-        } else observeResult(remote.sendCustomCommand(PlaybackProtocol.retry, Bundle.EMPTY))
+        val target = mutable.value.currentEntryId ?: return
+        sendRetry(target)
     }
 
-    fun seekTo(song: Song, positionMs: Long) {
+    private fun sendRetry(entryId: String) {
+        val remote = controller
+        if (remote == null) {
+            pending = null
+            pendingRetryEntryId = entryId
+            connect()
+        } else observeResult(remote.sendCustomCommand(PlaybackProtocol.retry, PlaybackProtocol.entryBundle(entryId)))
+    }
+
+    fun seekTo(entryId: String, positionMs: Long) {
         val remote = controller ?: return
         update(remote)
         val current = mutable.value
-        if (current.song != song || !current.seekable || current.failure != null) return
-        remote.seekTo(positionMs.coerceIn(0L, current.durationMs!!))
-        update(remote)
+        val duration = current.durationMs ?: return
+        if (current.currentEntryId != entryId || !current.seekable || current.failure != null) return
+        remote.sendCustomCommand(PlaybackProtocol.seek, PlaybackProtocol.seekBundle(entryId, positionMs.coerceIn(0L, duration)))
     }
 
     private fun observeResult(result: ListenableFuture<SessionResult>) {
@@ -192,7 +201,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
 data class PlaybackUiState(
     val song: Song? = null,
-    val queue: List<io.github.xiangyuplayer.playback.QueueEntry> = emptyList(),
+    val queue: List<QueueEntry> = emptyList(),
     val currentEntryId: String? = null,
     val mode: PlaybackMode = PlaybackMode.SEQUENTIAL,
     val hasNext: Boolean = false,

@@ -9,13 +9,14 @@ import io.github.xiangyuplayer.domain.model.Song
 internal object PlaybackProtocol {
     val play = SessionCommand("io.github.xiangyuplayer.PLAY_SONG", Bundle.EMPTY)
     val retry = SessionCommand("io.github.xiangyuplayer.RETRY_PLAYBACK", Bundle.EMPTY)
-
     val enqueue = SessionCommand("io.github.xiangyuplayer.ENQUEUE_NEXT", Bundle.EMPTY)
+    val replace = SessionCommand("io.github.xiangyuplayer.REPLACE_QUEUE", Bundle.EMPTY)
     val select = SessionCommand("io.github.xiangyuplayer.SELECT", Bundle.EMPTY)
     val remove = SessionCommand("io.github.xiangyuplayer.REMOVE", Bundle.EMPTY)
     val clear = SessionCommand("io.github.xiangyuplayer.CLEAR", Bundle.EMPTY)
     val mode = SessionCommand("io.github.xiangyuplayer.MODE", Bundle.EMPTY)
-    val queueCommands = listOf(play, retry, enqueue, select, remove, clear, mode)
+    val seek = SessionCommand("io.github.xiangyuplayer.SEEK_ENTRY", Bundle.EMPTY)
+    val queueCommands = listOf(play, retry, enqueue, replace, select, remove, clear, mode, seek)
 
     @Suppress("DEPRECATION")
     fun queue(bundle: Bundle): List<QueueEntry> = bundle.getParcelableArrayList<Bundle>("queue")?.mapNotNull { item ->
@@ -44,6 +45,30 @@ internal object PlaybackProtocol {
             if (bundle.containsKey("durationMs")) bundle.getLong("durationMs") else null,
             io.github.xiangyuplayer.data.remote.ArtworkUrl.parse(bundle.getString("coverUrl")), bundle.getString("source"), bundle.getString("sourceId"))
     }
+
+    fun entryId(bundle: Bundle) = bundle.getString("entryId")?.takeIf { it.isNotBlank() }
+
+    fun entryBundle(entryId: String) = Bundle().apply { putString("entryId", entryId) }
+
+    fun seekBundle(entryId: String, positionMs: Long) = Bundle().apply {
+        putString("entryId", entryId)
+        putLong("positionMs", positionMs)
+    }
+
+    /** Small test and later home lists only. Large playlists need the step-3 bounded transfer. */
+    fun replaceBundle(songs: List<Song>, selectedIndex: Int) = Bundle().apply {
+        putParcelableArrayList("songs", ArrayList(songs.map(::songBundle)))
+        putInt("selectedIndex", selectedIndex)
+    }
+
+    @Suppress("DEPRECATION")
+    fun songs(bundle: Bundle): List<Song>? {
+        val items = bundle.getParcelableArrayList<Bundle>("songs") ?: return null
+        return completeSongs(items.map(::song))
+    }
+
+    fun selectedIndex(bundle: Bundle): Int? =
+        if (bundle.containsKey("selectedIndex")) bundle.getInt("selectedIndex") else null
 
     fun extras(song: Song?, resolving: Boolean = false, preview: Boolean = false, failure: PlaybackFailure? = null, queue: PlaybackQueue) =
         Bundle().apply {

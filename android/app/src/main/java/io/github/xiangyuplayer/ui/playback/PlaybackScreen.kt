@@ -39,7 +39,7 @@ fun PlaybackScreen(
     state: PlaybackUiState,
     onToggle: () -> Unit,
     onRetry: () -> Unit,
-    onSeek: (Song, Long) -> Unit,
+    onSeek: (String, Long) -> Unit,
     onPrevious: () -> Unit = {},
     onNext: () -> Unit = {},
     onQueue: () -> Unit = {},
@@ -72,7 +72,7 @@ fun PlaybackScreen(
                 FilterChip(selected = showLyrics, onClick = { showLyrics = true }, label = { Text(stringResource(R.string.lyrics_title)) })
             }
             if (showLyrics) {
-                key(song.hash) { LyricsPanel(state, lyrics, onLyricsRetry, onSeek) }
+                key(state.currentEntryId) { LyricsPanel(state, lyrics, onLyricsRetry, onSeek) }
             } else Surface(
                 modifier = Modifier.widthIn(max = 400.dp).fillMaxWidth().aspectRatio(1f)
                     .clip(RoundedCornerShape(24.dp)),
@@ -129,10 +129,11 @@ fun PlaybackScreen(
 }
 
 @Composable
-private fun PlaybackProgress(state: PlaybackUiState, onSeek: (Song, Long) -> Unit, modifier: Modifier) {
-    val song = state.song ?: return
+private fun PlaybackProgress(state: PlaybackUiState, onSeek: (String, Long) -> Unit, modifier: Modifier) {
+    if (state.song == null) return
+    val entryId = state.currentEntryId ?: return
     val enabled = state.connected && state.seekable && state.failure == null && !state.resolving
-    var dragged by remember(song, state.durationMs, enabled) { mutableStateOf<Float?>(null) }
+    var dragged by remember(entryId, state.durationMs, enabled) { mutableStateOf<Float?>(null) }
     val duration = state.durationMs
     val fraction = dragged ?: if (duration != null) state.positionMs.toFloat() / duration else 0f
     val position = dragged?.let { (it * (duration ?: 0L)).toLong() } ?: state.positionMs
@@ -145,7 +146,7 @@ private fun PlaybackProgress(state: PlaybackUiState, onSeek: (Song, Long) -> Uni
             value = fraction.coerceIn(0f, 1f), enabled = enabled,
             onValueChange = { dragged = it },
             onValueChangeFinished = {
-                dragged?.let { value -> duration?.let { onSeek(song, (value * it).toLong()) } }
+                dragged?.let { value -> duration?.let { onSeek(entryId, (value * it).toLong()) } }
                 dragged = null
             },
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
@@ -182,6 +183,7 @@ private fun PlaybackScreenPreview() {
         PlaybackScreen(
             PlaybackUiState(
                 song = Song("preview", "很长的歌曲标题，也应该完整展示，不截断重要信息", listOf("第一位歌手", "第二位歌手", "第三位歌手")),
+                currentEntryId = "preview-entry",
                 connected = true, preview = true, positionMs = 12_000, durationMs = 60_000, seekable = true,
             ), onToggle = {}, onRetry = {}, onSeek = { _, _ -> }, onBack = {},
         )

@@ -10,23 +10,24 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Main-thread owner. Cancellation plus a version check prevents late responses from starting old songs. */
+/** Main-thread owner. Cancellation, a version check, and entryId keep late responses off a new occurrence. */
 class PlaybackRequests(
     private val scope: CoroutineScope,
     private val resolver: AudioSourceResolver,
-    private val onReady: (Song, AudioSource) -> Unit,
+    private val onReady: (String, Song, AudioSource) -> Unit,
     private val onFailure: (PlaybackFailure) -> Unit,
 ) {
     private var job: Job? = null
     private var version = 0L
 
-    fun play(song: Song) {
+    fun play(entryId: String, song: Song) {
         cancel()
         val request = version
+        val target = entryId
         job = scope.launch {
             try {
                 val source = resolver.resolve(song)
-                if (request == version) onReady(song, source)
+                if (request == version) onReady(target, song, source)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 if (request == version) onFailure((error as? PlaybackException)?.failure ?: PlaybackFailure.RESPONSE)

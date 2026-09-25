@@ -127,7 +127,7 @@ HOST=127.0.0.1 corepack pnpm start
 
 ## 继续开发
 
-首页功能已建立 `feature/home` 分支，当前仅完成设计计划，业务尚未接通。按 [首页功能实施计划](docs/HOME_PLAN.md)，先按 [队列修复与准备计划](docs/QUEUE_PREPARATION_PLAN.md) 落实 [播放列表核心交互规范](docs/PLAYBACK_INTERACTIONS.md)，完成验收后再做每日推荐和 FM。已确认搜索点歌允许重复插入，日推/歌单点歌整表替换；FM 不暂存或恢复旧普通队列。当前代码仍按旧规则去重，尚待迁移。
+首页功能已建立 `feature/home` 分支，业务尚未接通。按 [首页功能实施计划](docs/HOME_PLAN.md)，先按 [队列修复与准备计划](docs/QUEUE_PREPARATION_PLAN.md) 落实 [播放列表核心交互规范](docs/PLAYBACK_INTERACTIONS.md)，完成验收后再做每日推荐和 FM。队列步骤 1–2 已实现独立条目和 entryId 控制链路，允许重复插入；整表替换仅有小型协议入口，大列表传输尚未做。人工闭环未完成，不把前置阶段标成已验收。
 
 播放按 [播放功能实施计划](docs/PLAYBACK_PLAN.md) 分阶段推进：点歌出声 → 完整播放页 → 队列 → 恢复与稳定性 → LRC。阶段 1–5 已实现，歌词与设备组合场景仍需手动验收。
 

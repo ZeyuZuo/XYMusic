@@ -16,23 +16,23 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.xiangyuplayer.R
-import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.domain.model.activeLyricIndex
 import io.github.xiangyuplayer.domain.model.lyricSeekPosition
 import io.github.xiangyuplayer.ui.playback.PlaybackUiState
 
 @Composable
-fun LyricsPanel(playback: PlaybackUiState, lyrics: LyricsUiState, retry: () -> Unit, seek: (Song, Long) -> Unit) {
+fun LyricsPanel(playback: PlaybackUiState, lyrics: LyricsUiState, retry: () -> Unit, seek: (String, Long) -> Unit) {
     val song = playback.song ?: return
+    val entryId = playback.currentEntryId ?: return
     val current = lyrics.hash == song.hash
     val list = rememberLazyListState()
     val dragged by list.interactionSource.collectIsDraggedAsState()
-    var follow by remember(song.hash) { mutableStateOf(true) }
+    var follow by remember(entryId) { mutableStateOf(true) }
     val startMs = playback.previewStartMs
     val active = if (current && !playback.resolving && startMs != null) activeLyricIndex(lyrics.lines,
         playback.positionMs + startMs) else -1
     LaunchedEffect(dragged) { if (dragged) follow = false }
-    LaunchedEffect(active, follow, song.hash) {
+    LaunchedEffect(active, follow, entryId) {
         if (follow && active >= 0) list.animateScrollToItem(active,
             -(list.layoutInfo.viewportEndOffset / 3))
     }
@@ -60,7 +60,7 @@ fun LyricsPanel(playback: PlaybackUiState, lyrics: LyricsUiState, retry: () -> U
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                                .clickable(enabled = enabled) { seek(song, position!!); follow = true }
+                                .clickable(enabled = enabled) { seek(entryId, position!!); follow = true }
                                 .semantics { if (selected) stateDescription = description }
                                 .padding(horizontal = 16.dp, vertical = 12.dp))
                     }
