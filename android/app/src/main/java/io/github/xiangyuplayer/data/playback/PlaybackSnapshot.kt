@@ -20,8 +20,13 @@ data class PlaybackSnapshot(
 )
 
 internal object PlaybackSnapshotCodec {
+    const val MAX_BYTES = 4 * 1024 * 1024
     private val gson = Gson()
     fun encode(snapshot: PlaybackSnapshot): String = gson.toJson(snapshot)
+
+    fun encodeBytes(snapshot: PlaybackSnapshot): ByteArray = encode(snapshot).toByteArray(Charsets.UTF_8).also {
+        require(it.size <= MAX_BYTES) { "Playback record exceeds storage limit" }
+    }
 
     fun decode(json: String, owner: String): PlaybackSnapshot? = try {
         val root = JsonParser.parseString(json).asJsonObject
@@ -55,7 +60,7 @@ internal object PlaybackSnapshotCodec {
         root.addProperty("version", 2)
     }
 
-    private fun validateSong(song: Song) {
+    internal fun validateSong(song: Song) {
         require(song.hash.matches(Regex("[a-fA-F0-9]{32}")) && song.title.isNotBlank())
         require(song.artists.all { it.isNotBlank() })
         require(song.durationMs == null || song.durationMs >= 0)

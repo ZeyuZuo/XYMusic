@@ -134,6 +134,10 @@
     <string name="playback_previous">上一首</string>
     <string name="playback_queue">播放队列</string>
     <string name="queue_count">播放队列 · %1$d 首</string>
+    <string name="queue_loading">正在加载播放队列…</string>
+    <string name="queue_load_failed">播放队列加载失败，请重试。</string>
+    <string name="queue_retry">重新加载队列</string>
+    <string name="queue_transfer_failed">无法载入完整列表，请重试或选择较小的列表。</string>
     <string name="queue_empty">队列为空，搜索并选择喜欢的歌曲。</string>
     <string name="queue_current">当前歌曲</string>
     <string name="queue_clear">清空队列</string>

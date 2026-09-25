@@ -21,20 +21,27 @@ import io.github.xiangyuplayer.playback.PlaybackMode
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QueueSheet(state: PlaybackUiState, onSelect: (String) -> Unit, onRemove: (String) -> Unit,
-    onClear: () -> Unit, onMode: (PlaybackMode) -> Unit, onDismiss: () -> Unit) {
+    onClear: () -> Unit, onMode: (PlaybackMode) -> Unit, onRetry: () -> Unit, onDismiss: () -> Unit) {
     var confirmClear by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.queue_count, state.queue.size), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = { confirmClear = true }, enabled = state.connected && state.queue.isNotEmpty()) {
+                Text(stringResource(R.string.queue_count, state.queueCount), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = { confirmClear = true }, enabled = state.connected && state.queueCount > 0) {
                     Text(stringResource(R.string.queue_clear))
                 }
             }
             PlaybackModeMenu(state.mode, state.connected, onMode, Modifier.padding(horizontal = 8.dp))
             if (state.storageError) Text(stringResource(R.string.playback_storage_error), Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
             state.actionMessage?.let { Text(stringResource(it), Modifier.padding(horizontal = 16.dp)) }
-            if (state.queue.isEmpty()) Text(stringResource(R.string.queue_empty), Modifier.padding(24.dp))
+            when {
+                state.queueLoading -> Text(stringResource(R.string.queue_loading), Modifier.padding(24.dp))
+                state.queueLoadFailed -> Column(Modifier.padding(horizontal = 24.dp)) {
+                    Text(stringResource(R.string.queue_load_failed))
+                    TextButton(onClick = onRetry, enabled = state.connected) { Text(stringResource(R.string.queue_retry)) }
+                }
+                state.queueCount == 0 -> Text(stringResource(R.string.queue_empty), Modifier.padding(24.dp))
+            }
             LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false)) {
                 items(state.queue, key = { it.entryId }) { entry ->
                     val song = entry.song

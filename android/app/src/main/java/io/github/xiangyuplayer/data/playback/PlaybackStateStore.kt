@@ -28,7 +28,7 @@ class PlaybackStateStore(context: Context, private val onWriteResult: (String, B
                     try {
                         sessions.withPlaybackOwner(snapshot.owner) {
                             if (generation != generations.get()) return@withPlaybackOwner
-                            val bytes = PlaybackSnapshotCodec.encode(snapshot).toByteArray(Charsets.UTF_8)
+                            val bytes = PlaybackSnapshotCodec.encodeBytes(snapshot)
                             val stream = file.startWrite()
                             try { stream.write(bytes); file.finishWrite(stream) }
                             catch (error: Exception) { file.failWrite(stream); throw error }
@@ -46,7 +46,7 @@ class PlaybackStateStore(context: Context, private val onWriteResult: (String, B
     /** Called on IO before accepting playback commands. Malformed records are discarded. */
     fun read(owner: String): PlaybackSnapshot? = sessions.withPlaybackOwner(owner) {
         if (!file.baseFile.exists()) return@withPlaybackOwner null
-        if (file.baseFile.length() > 4 * 1024 * 1024) { file.delete(); return@withPlaybackOwner null }
+        if (file.baseFile.length() > PlaybackSnapshotCodec.MAX_BYTES) { file.delete(); return@withPlaybackOwner null }
         val snapshot = file.openRead().bufferedReader().use { PlaybackSnapshotCodec.decode(it.readText(), owner) }
         if (snapshot == null) file.delete()
         snapshot

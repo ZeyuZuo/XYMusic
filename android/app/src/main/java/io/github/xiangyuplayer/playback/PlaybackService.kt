@@ -60,6 +60,7 @@ class PlaybackService : MediaSessionService() {
     private lateinit var sessionPlayer: QueueSessionPlayer
     private val queue = PlaybackQueue()
     private val queueCommands = QueueCommands(queue)
+    private lateinit var transfers: QueueTransferSession
     private val selected get() = queue.current?.song
     private var resolving = false
     private var failure: PlaybackFailure? = null
@@ -76,6 +77,10 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        transfers = QueueTransferSession(this, scope, queue, { account?.saved?.playbackId }, { account?.epoch }) { snapshot ->
+            queue.restore(snapshot)
+            playEntry(queue.current!!)
+        }
         stateStore = PlaybackStateStore(this) { owner, success ->
             scope.launch {
                 if (account?.saved?.playbackId == owner && storageError == success) { storageError = !success; publish(save = false) }
@@ -133,6 +138,7 @@ class PlaybackService : MediaSessionService() {
         session = MediaSession.Builder(this, sessionPlayer).setSessionActivity(activity)
             .setCallback(SessionCallback()).build()
         scope.launch {
+            transfers.clearOrphans()
             PlaybackSessions(applicationContext).changes.collect { updated ->
                 val initial = !accountReady.isCompleted
                 var restored = false
@@ -204,6 +210,7 @@ class PlaybackService : MediaSessionService() {
 
     /** A system stop cancels resolution too; pressing play later re-resolves the saved position. */
     private fun unload() {
+        transfers.invalidate()
         savedPosition = position()
         savedDuration = duration()
         changing = true
@@ -219,6 +226,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun playEntry(entry: QueueEntry, start: Boolean = true, resumeMs: Long = 0, refreshing: Boolean = false) {
         if (queue.current?.entryId != entry.entryId) return
+        transfers.invalidate()
         changing = true
         requests.cancel()
         if (!refreshing) recovery.reset()
@@ -263,7 +271,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun publish(save: Boolean = true) {
-        session?.setSessionExtras(PlaybackProtocol.extras(selected, resolving, preview, failure, queue).apply {
+        session?.setSessionExtras(PlaybackProtocol.extras(selected, resolving, preview, failure, queue, transfers.version).apply {
             previewStartMs?.let { putLong("previewStartMs", it) }
             putBoolean("needsSource", needsSource)
             putLong("savedPosition", savedPosition)
@@ -275,6 +283,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun skip(forward: Boolean) {
+        transfers.invalidate()
         if (account?.epoch != SessionStore.changes.value.accountEpoch) return
         val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
         val entry = if (forward) queue.next() else queue.previous()
@@ -320,6 +329,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun clearPlayback() {
+        transfers.invalidate()
         queue.clear()
         stopCurrent()
     }
@@ -343,18 +353,31 @@ class PlaybackService : MediaSessionService() {
             if (controller.uid != Process.myUid()) {
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
             }
-            if (!accountReady.isCompleted) {
-                val result = SettableFuture.create<SessionResult>()
-                val epoch = SessionStore.changes.value.accountEpoch
-                val job = scope.launch {
-                    accountReady.await()
-                    result.set(if (epoch == SessionStore.changes.value.accountEpoch) handleCommand(customCommand, args)
-                        else SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+            val result = SettableFuture.create<SessionResult>()
+            val epoch = SessionStore.changes.value.accountEpoch
+            val job = scope.launch {
+                accountReady.await()
+                if (epoch != SessionStore.changes.value.accountEpoch) {
+                    result.set(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+                    return@launch
                 }
-                job.invokeOnCompletion { if (!result.isDone) result.cancel(false) }
-                return result
+                when (customCommand.customAction) {
+                    PlaybackProtocol.beginReplace.customAction -> result.set(transfers.begin())
+                    PlaybackProtocol.replace.customAction -> result.setFuture(transfers.replace(args))
+                    PlaybackProtocol.readQueue.customAction -> result.setFuture(transfers.page(args))
+                    PlaybackProtocol.cancelReplace.customAction -> {
+                        transfers.cancel(args.getString("reference"))
+                        result.set(SessionResult(SessionResult.RESULT_SUCCESS))
+                    }
+                    else -> result.set(handleCommand(customCommand, args))
+                }
             }
-            return Futures.immediateFuture(handleCommand(customCommand, args))
+            job.invokeOnCompletion { if (!result.isDone && it != null) result.cancel(false) }
+            return result
+        }
+
+        override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
+            if (controller.uid == Process.myUid()) transfers.invalidate()
         }
 
         private fun handleCommand(customCommand: SessionCommand, args: Bundle): SessionResult {
@@ -364,14 +387,16 @@ class PlaybackService : MediaSessionService() {
                     .map { it.customAction } && account?.epoch != SessionStore.changes.value.accountEpoch) {
                 return SessionResult(SessionError.ERROR_PERMISSION_DENIED)
             }
+            // Any newer user queue intent wins over an outstanding list replacement.
+            if (action in listOf(PlaybackProtocol.play, PlaybackProtocol.retry, PlaybackProtocol.enqueue,
+                    PlaybackProtocol.select, PlaybackProtocol.remove, PlaybackProtocol.clear, PlaybackProtocol.mode)
+                    .map { it.customAction }) transfers.invalidate()
             val success = when (action) {
                 PlaybackProtocol.play.customAction ->
                     PlaybackProtocol.song(args)?.let { apply(queueCommands.insertAndPlay(it)) } ?: false
                 PlaybackProtocol.retry.customAction -> apply(queueCommands.retry(PlaybackProtocol.entryId(args), position()))
                 PlaybackProtocol.enqueue.customAction ->
                     PlaybackProtocol.song(args)?.let { apply(queueCommands.enqueueNext(it)) } ?: false
-                PlaybackProtocol.replace.customAction ->
-                    apply(queueCommands.replaceAndPlay(PlaybackProtocol.songs(args), PlaybackProtocol.selectedIndex(args)))
                 PlaybackProtocol.select.customAction -> apply(queueCommands.selectEntry(PlaybackProtocol.entryId(args)))
                 PlaybackProtocol.seek.customAction -> if (args.containsKey("positionMs")) {
                     apply(queueCommands.seek(PlaybackProtocol.entryId(args), args.getLong("positionMs")))
@@ -401,6 +426,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         saveState()
         stateStore.close()
+        transfers.invalidate()
         requests.cancel()
         scope.cancel()
         session?.release()

@@ -16,11 +16,14 @@ data class QueueEntry(val entryId: String, val song: Song) {
 class PlaybackQueue(private val random: Random = Random.Default) {
     private val items = mutableListOf<QueueEntry>()
     private val order = mutableListOf<String>()
+    var revision = 0L
+        private set
     var mode = PlaybackMode.SEQUENTIAL
         private set
     var current: QueueEntry? = null
         private set
     val entries: List<QueueEntry> get() = items.toList()
+    val size: Int get() = items.size
     private val index get() = current?.let { order.indexOf(it.entryId) } ?: -1
     val hasPrevious get() = index > 0
     val hasNext get() = index >= 0 && index < order.lastIndex
@@ -35,6 +38,7 @@ class PlaybackQueue(private val random: Random = Random.Default) {
         items.add(physical + 1, entry)
         order.add(next, entry.entryId)
         if (current == null) current = entry
+        revision++
         return entry
     }
 
@@ -59,10 +63,12 @@ class PlaybackQueue(private val random: Random = Random.Default) {
 
     /** Removing one occurrence cannot remove other occurrences of the same song. */
     fun remove(entryId: String): QueueEntry? {
+        if (items.none { it.entryId == entryId }) return null
         val removingCurrent = current?.entryId == entryId
         val successor = if (removingCurrent) order.getOrNull(index + 1) else null
         items.removeAll { it.entryId == entryId }
         order.remove(entryId)
+        revision++
         if (removingCurrent) current = successor?.let { id -> items.firstOrNull { it.entryId == id } }
         return if (removingCurrent) current else null
     }
@@ -87,9 +93,10 @@ class PlaybackQueue(private val random: Random = Random.Default) {
         order.addAll(snapshot.order)
         mode = snapshot.mode
         current = snapshot.current?.let { id -> items.first { it.entryId == id } }
+        revision++
     }
 
-    fun clear() { items.clear(); order.clear(); current = null }
+    fun clear() { items.clear(); order.clear(); current = null; revision++ }
 }
 
 data class QueueSnapshot(val entries: List<QueueEntry>, val order: List<String>, val current: String?, val mode: PlaybackMode) {

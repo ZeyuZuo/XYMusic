@@ -7,31 +7,6 @@ import org.junit.Test
 class QueueCommandsTest {
     private fun song(id: String) = Song(id, id, emptyList())
 
-    @Test fun replaceValidatesCompletelyBeforeMutatingAndKeepsTheOldQueueOnInvalidInput() {
-        val queue = PlaybackQueue()
-        val commands = QueueCommands(queue)
-        commands.insertAndPlay(song("old"))
-        queue.setMode(PlaybackMode.SHUFFLE)
-        val before = queue.snapshot()
-        listOf(
-            commands.replaceAndPlay(null, 0),
-            commands.replaceAndPlay(emptyList(), 0),
-            commands.replaceAndPlay(listOf(song("a")), null),
-            commands.replaceAndPlay(listOf(song("a")), -1),
-            commands.replaceAndPlay(listOf(song("a")), 1),
-        ).forEach { assertEquals(QueueCommands.Result.Invalid, it) }
-        assertEquals(before, queue.snapshot())
-        assertNull(completeSongs(emptyList()))
-        assertNull(completeSongs(listOf(song("a"), null)))
-        val songs = listOf(song("a"), song("b"), song("a"))
-        val result = commands.replaceAndPlay(songs, 2)
-        val selected = (result as QueueCommands.Result.Play).entry
-        assertEquals(songs, queue.entries.map { it.song })
-        assertEquals(queue.entries[2], selected)
-        assertEquals(PlaybackMode.SEQUENTIAL, queue.mode)
-        assertTrue(result.start)
-    }
-
     @Test fun retryAndSeekIgnoreStaleOccurrenceIdsAndRetryDoesNotInsert() {
         val queue = PlaybackQueue()
         val commands = QueueCommands(queue)

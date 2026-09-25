@@ -10,19 +10,16 @@ internal object PlaybackProtocol {
     val play = SessionCommand("io.github.xiangyuplayer.PLAY_SONG", Bundle.EMPTY)
     val retry = SessionCommand("io.github.xiangyuplayer.RETRY_PLAYBACK", Bundle.EMPTY)
     val enqueue = SessionCommand("io.github.xiangyuplayer.ENQUEUE_NEXT", Bundle.EMPTY)
-    val replace = SessionCommand("io.github.xiangyuplayer.REPLACE_QUEUE", Bundle.EMPTY)
+    val beginReplace = SessionCommand("io.github.xiangyuplayer.BEGIN_QUEUE_REPLACEMENT", Bundle.EMPTY)
+    val replace = SessionCommand("io.github.xiangyuplayer.COMMIT_QUEUE_REPLACEMENT", Bundle.EMPTY)
+    val cancelReplace = SessionCommand("io.github.xiangyuplayer.CANCEL_QUEUE_REPLACEMENT", Bundle.EMPTY)
+    val readQueue = SessionCommand("io.github.xiangyuplayer.READ_QUEUE_PAGE", Bundle.EMPTY)
     val select = SessionCommand("io.github.xiangyuplayer.SELECT", Bundle.EMPTY)
     val remove = SessionCommand("io.github.xiangyuplayer.REMOVE", Bundle.EMPTY)
     val clear = SessionCommand("io.github.xiangyuplayer.CLEAR", Bundle.EMPTY)
     val mode = SessionCommand("io.github.xiangyuplayer.MODE", Bundle.EMPTY)
     val seek = SessionCommand("io.github.xiangyuplayer.SEEK_ENTRY", Bundle.EMPTY)
-    val queueCommands = listOf(play, retry, enqueue, replace, select, remove, clear, mode, seek)
-
-    @Suppress("DEPRECATION")
-    fun queue(bundle: Bundle): List<QueueEntry> = bundle.getParcelableArrayList<Bundle>("queue")?.mapNotNull { item ->
-        val id = item.getString("entryId")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-        song(item)?.let { QueueEntry(id, it) }
-    }.orEmpty()
+    val queueCommands = listOf(play, retry, enqueue, beginReplace, replace, cancelReplace, readQueue, select, remove, clear, mode, seek)
 
     fun songBundle(song: Song) = Bundle().apply {
         putString("hash", song.hash)
@@ -55,24 +52,18 @@ internal object PlaybackProtocol {
         putLong("positionMs", positionMs)
     }
 
-    /** Small test and later home lists only. Large playlists need the step-3 bounded transfer. */
-    fun replaceBundle(songs: List<Song>, selectedIndex: Int) = Bundle().apply {
-        putParcelableArrayList("songs", ArrayList(songs.map(::songBundle)))
+    fun replaceBundle(reference: String, selectedIndex: Int) = Bundle().apply {
+        putString("reference", reference)
         putInt("selectedIndex", selectedIndex)
-    }
-
-    @Suppress("DEPRECATION")
-    fun songs(bundle: Bundle): List<Song>? {
-        val items = bundle.getParcelableArrayList<Bundle>("songs") ?: return null
-        return completeSongs(items.map(::song))
     }
 
     fun selectedIndex(bundle: Bundle): Int? =
         if (bundle.containsKey("selectedIndex")) bundle.getInt("selectedIndex") else null
 
-    fun extras(song: Song?, resolving: Boolean = false, preview: Boolean = false, failure: PlaybackFailure? = null, queue: PlaybackQueue) =
+    fun extras(song: Song?, resolving: Boolean = false, preview: Boolean = false, failure: PlaybackFailure? = null, queue: PlaybackQueue, queueVersion: String) =
         Bundle().apply {
-            putParcelableArrayList("queue", ArrayList(queue.entries.map { entry -> songBundle(entry.song).apply { putString("entryId", entry.entryId) } }))
+            putString("queueVersion", queueVersion)
+            putInt("queueCount", queue.size)
             putString("currentEntryId", queue.current?.entryId)
             putString("mode", queue.mode.name)
             putBoolean("hasNext", queue.hasNext)

@@ -103,8 +103,9 @@ fun XiangyuApp(settings: SettingsStore) {
             playback.dismissMessage()
         }
     }
+    LaunchedEffect(queueVisible) { playback.setQueueVisible(queueVisible) }
     if (queueVisible) {
-        QueueSheet(playbackState, playback::select, playback::remove, playback::clearQueue, playback::setMode) { queueVisible = false }
+        QueueSheet(playbackState, playback::select, playback::remove, playback::clearQueue, playback::setMode, playback::retryQueue) { queueVisible = false }
     }
     if (loginVisible) {
         LoginScreen(authState, auth) { loginVisible = false }

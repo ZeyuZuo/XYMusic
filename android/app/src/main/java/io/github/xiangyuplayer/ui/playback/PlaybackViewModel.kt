@@ -31,6 +31,10 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     private val mutable = MutableStateFlow(PlaybackUiState())
     val state = mutable.asStateFlow()
     private val executor = ContextCompat.getMainExecutor(application)
+    private val queueController = QueueController(application, viewModelScope, executor, { queue ->
+        mutable.update { it.copy(queue = queue.entries, queueCount = queue.count,
+            queueLoading = queue.loading, queueLoadFailed = queue.failed) }
+    }, { mutable.update { it.copy(actionMessage = R.string.queue_transfer_failed) } })
     private var future: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     private var pending: Song? = null
@@ -59,6 +63,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
             .setListener(object : MediaController.Listener {
                 override fun onExtrasChanged(controller: MediaController, extras: Bundle) { update(controller) }
                 override fun onDisconnected(controller: MediaController) {
+                    queueController.disconnect()
                     this@PlaybackViewModel.controller = null
                     future = null
                     mutable.update { it.copy(resolving = false, buffering = false, connected = false,
@@ -86,6 +91,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun play(song: Song) {
+        queueController.cancelReplacement()
         pendingRetryEntryId = null
         val remote = controller
         if (remote == null) {
@@ -95,11 +101,13 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         } else observeResult(remote.sendCustomCommand(PlaybackProtocol.play, PlaybackProtocol.songBundle(song)))
     }
 
-    fun next() { controller?.seekToNextMediaItem() }
-    fun previous() { controller?.seekToPreviousMediaItem() }
+    fun next() { queueController.cancelReplacement(); controller?.seekToNextMediaItem() }
+    fun previous() { queueController.cancelReplacement(); controller?.seekToPreviousMediaItem() }
     fun enqueue(song: Song) = queueCommand(PlaybackProtocol.enqueue, PlaybackProtocol.songBundle(song), R.string.queue_added_next)
     fun replaceAndPlay(songs: List<Song>, selectedIndex: Int) =
-        queueCommand(PlaybackProtocol.replace, PlaybackProtocol.replaceBundle(songs, selectedIndex))
+        queueController.replaceAndPlay(songs, selectedIndex)
+    fun setQueueVisible(visible: Boolean) = queueController.setVisible(visible)
+    fun retryQueue() = queueController.retry()
     fun select(entryId: String) = queueCommand(PlaybackProtocol.select, PlaybackProtocol.entryBundle(entryId))
     fun remove(entryId: String) = queueCommand(PlaybackProtocol.remove, PlaybackProtocol.entryBundle(entryId))
     fun clearQueue() = queueCommand(PlaybackProtocol.clear)
@@ -107,6 +115,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     fun dismissMessage() { mutable.update { it.copy(actionMessage = null) } }
 
     private fun queueCommand(command: SessionCommand, args: Bundle = Bundle.EMPTY, successMessage: Int? = null) {
+        queueController.cancelReplacement()
         val remote = controller
         if (remote == null) {
             mutable.update { it.copy(actionMessage = R.string.queue_action_failed) }
@@ -137,6 +146,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun sendRetry(entryId: String) {
+        queueController.cancelReplacement()
         val remote = controller
         if (remote == null) {
             pending = null
@@ -168,6 +178,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
     private fun update(remote: MediaController) {
         val extras = remote.sessionExtras
+        queueController.observe(remote, extras.getString("queueVersion"), extras.getInt("queueCount"))
         val song = extras.getBundle("song")?.let(PlaybackProtocol::song)
         val resolving = extras.getBoolean("resolving")
         val needsSource = extras.getBoolean("needsSource")
@@ -175,7 +186,9 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         val savedDuration = if (extras.containsKey("savedDuration")) extras.getLong("savedDuration") else null
         val duration = if (needsSource || resolving) savedDuration else remote.duration.takeIf { it > 0 && !resolving && remote.currentMediaItem != null }
         mutable.value = PlaybackUiState(song = song, connected = true,
-            queue = PlaybackProtocol.queue(extras), currentEntryId = extras.getString("currentEntryId"),
+            queue = mutable.value.queue, queueCount = mutable.value.queueCount,
+            queueLoading = mutable.value.queueLoading, queueLoadFailed = mutable.value.queueLoadFailed,
+            currentEntryId = extras.getString("currentEntryId"),
             mode = PlaybackMode.entries.firstOrNull { it.name == extras.getString("mode") } ?: PlaybackMode.SEQUENTIAL,
             hasNext = extras.getBoolean("hasNext"), hasPrevious = extras.getBoolean("hasPrevious"),
             actionMessage = mutable.value.actionMessage,
@@ -193,6 +206,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         disposed = true
+        queueController.disconnect()
         controller?.removeListener(playerListener)
         future?.let(MediaController::releaseFuture)
         controller = null
@@ -202,6 +216,9 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 data class PlaybackUiState(
     val song: Song? = null,
     val queue: List<QueueEntry> = emptyList(),
+    val queueCount: Int = 0,
+    val queueLoading: Boolean = false,
+    val queueLoadFailed: Boolean = false,
     val currentEntryId: String? = null,
     val mode: PlaybackMode = PlaybackMode.SEQUENTIAL,
     val hasNext: Boolean = false,
