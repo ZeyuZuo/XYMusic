@@ -7,6 +7,7 @@ import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.playback.QueueEntry
 import io.github.xiangyuplayer.playback.QueueSnapshot
+import io.github.xiangyuplayer.playback.QueueSessionType
 
 /** Public metadata and an opaque cache owner; never audio URLs or authentication. */
 data class PlaybackSnapshot(
@@ -36,6 +37,9 @@ internal object PlaybackSnapshotCodec {
             "2" -> Unit
             else -> error("Unsupported playback record")
         }
+        // Pre-home v2 records have no session type. Explicit null/unknown types remain invalid.
+        val queue = root.getAsJsonObject("queue")
+        if (!queue.has("sessionType")) queue.addProperty("sessionType", QueueSessionType.NORMAL.name)
         val snapshot = gson.fromJson(root, PlaybackSnapshot::class.java)
         snapshot.queue.validate()
         require(snapshot.previewStartMs == null || snapshot.previewStartMs >= 0)

@@ -36,12 +36,13 @@ internal class QueueTransferSession(
 
     suspend fun clearOrphans() = withContext(Dispatchers.IO) { store.clear() }
 
-    fun begin(): SessionResult {
+    fun begin(args: Bundle): SessionResult {
+        val target = PlaybackProtocol.sessionType(args) ?: return rejected()
         invalidate()
         val currentOwner = owner() ?: return rejected()
         val currentEpoch = epoch() ?: return rejected()
         if (currentEpoch != SessionStore.changes.value.accountEpoch) return rejected()
-        val ticket = replacement.begin(currentOwner, currentEpoch)
+        val ticket = replacement.begin(currentOwner, currentEpoch, target)
         return SessionResult(SessionResult.RESULT_SUCCESS, Bundle().apply {
             putString("reference", ticket.reference)
             putString("owner", ticket.owner)
@@ -69,7 +70,7 @@ internal class QueueTransferSession(
         reading = scope.launch {
             try {
                 val snapshot = withContext(Dispatchers.IO) {
-                    sessions.withPlaybackOwner(ticket.owner) { store.read(ticket.reference, ticket.owner, index) }
+                    sessions.withPlaybackOwner(ticket.owner) { store.read(ticket.reference, ticket.owner, index, ticket.target) }
                 } ?: return@launch
                 if (!replacement.accepts(ticket, owner(), SessionStore.changes.value.accountEpoch) || epoch() != ticket.epoch) return@launch
                 replacement.invalidate()

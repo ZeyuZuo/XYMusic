@@ -5,6 +5,7 @@ import com.google.gson.JsonParser
 import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.playback.PlaybackQueue
+import io.github.xiangyuplayer.playback.QueueSessionType
 import kotlin.random.Random
 import org.junit.Assert.*
 import org.junit.Test
@@ -12,7 +13,7 @@ import org.junit.Test
 class PlaybackSnapshotTest {
     private fun snapshot(): PlaybackSnapshot {
         val queue = PlaybackQueue(Random(4))
-        queue.replace(listOf("a", "b", "a").map { Song(it.repeat(32), "Synthetic $it", listOf("Test artist")) }, 0)
+        queue.replace(listOf("a", "b", "a").map { Song(it.repeat(32), "Synthetic $it", listOf("Test artist")) }, 0, QueueSessionType.NORMAL)
         queue.setMode(PlaybackMode.SHUFFLE)
         queue.next()
         return PlaybackSnapshot("synthetic-owner", queue.snapshot(), 83_000, 120_000, true, previewStartMs = 65_700)
@@ -44,6 +45,7 @@ class PlaybackSnapshotTest {
             "order" to listOf(hashes[2], hashes[0], hashes[1]), "current" to hashes[0], "mode" to "SHUFFLE")))
         val migrated = PlaybackSnapshotCodec.decode(root.toString(), "synthetic-owner")!!
         assertEquals(2, migrated.version)
+        assertEquals(QueueSessionType.NORMAL, migrated.queue.sessionType)
         val entries = migrated.queue.entries
         assertEquals(hashes, entries.map { it.song.hash })
         assertEquals(listOf(entries[2].entryId, entries[0].entryId, entries[1].entryId), migrated.queue.order)
@@ -76,5 +78,18 @@ class PlaybackSnapshotTest {
             snapshot.copy(positionMs = -1),
         )
         invalid.forEach { assertNull(PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(it), snapshot.owner)) }
+    }
+
+    @Test fun legacyV2DefaultsToNormalAndExplicitSessionTypeRoundTripsWithoutLosingState() {
+        val original = snapshot()
+        val legacy = JsonParser.parseString(PlaybackSnapshotCodec.encode(original)).asJsonObject
+        legacy.getAsJsonObject("queue").remove("sessionType")
+        assertEquals(original, PlaybackSnapshotCodec.decode(legacy.toString(), original.owner))
+        val fm = original.copy(queue = original.queue.copy(sessionType = QueueSessionType.FM))
+        assertEquals(fm, PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(fm), fm.owner))
+        legacy.getAsJsonObject("queue").addProperty("sessionType", "unknown")
+        assertNull(PlaybackSnapshotCodec.decode(legacy.toString(), original.owner))
+        legacy.getAsJsonObject("queue").add("sessionType", com.google.gson.JsonNull.INSTANCE)
+        assertNull(PlaybackSnapshotCodec.decode(legacy.toString(), original.owner))
     }
 }

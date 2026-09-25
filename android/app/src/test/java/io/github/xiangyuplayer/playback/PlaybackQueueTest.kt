@@ -52,7 +52,7 @@ class PlaybackQueueTest {
 
     @Test fun shuffleVisitsEachOccurrenceOnceAndPreviousRetracesOrder() {
         val queue = PlaybackQueue(Random(7))
-        queue.replace(List(5) { song("same") }, 2)
+        queue.replace(List(5) { song("same") }, 2, QueueSessionType.NORMAL)
         queue.setMode(PlaybackMode.SHUFFLE)
         val visited = mutableListOf(queue.current!!.entryId)
         while (queue.hasNext) visited.add(queue.next()!!.entryId)
@@ -64,7 +64,7 @@ class PlaybackQueueTest {
 
     @Test fun explicitNextTakesPriorityInShuffleAndModeChangesKeepCurrent() {
         val queue = PlaybackQueue(Random(4))
-        val a = queue.replace(listOf(song("a"), song("b"), song("a")), 0)
+        val a = queue.replace(listOf(song("a"), song("b"), song("a")), 0, QueueSessionType.NORMAL)
         queue.setMode(PlaybackMode.SHUFFLE)
         val inserted = queue.insertNext(song("a"))
         assertEquals(inserted, queue.next())
@@ -76,7 +76,7 @@ class PlaybackQueueTest {
 
     @Test fun selectionAndRemovalTargetOnlyTheSpecifiedOccurrence() {
         val queue = PlaybackQueue()
-        queue.replace(List(3) { song("same") }, 0)
+        queue.replace(List(3) { song("same") }, 0, QueueSessionType.NORMAL)
         val (a, b, c) = queue.entries
         assertEquals(b, queue.select(b.entryId))
         assertNull(queue.select("missing"))
@@ -106,18 +106,47 @@ class PlaybackQueueTest {
         val queue = PlaybackQueue()
         queue.play(song("old")); queue.setMode(PlaybackMode.SHUFFLE)
         val songs = listOf(song("a"), song("b"), song("a"))
-        val selected = queue.replace(songs, 2)
+        val selected = queue.replace(songs, 2, QueueSessionType.NORMAL)
         assertEquals(songs, queue.entries.map { it.song })
         assertEquals(queue.entries[2], selected)
         assertEquals(PlaybackMode.SEQUENTIAL, queue.mode)
         val before = queue.snapshot()
         listOf(-1, 3).forEach { index ->
-            assertThrows(IllegalArgumentException::class.java) { queue.replace(songs, index) }
+            assertThrows(IllegalArgumentException::class.java) { queue.replace(songs, index, QueueSessionType.FM) }
             assertEquals(before, queue.snapshot())
         }
-        assertThrows(IllegalArgumentException::class.java) { queue.replace(emptyList(), 0) }
+        assertThrows(IllegalArgumentException::class.java) { queue.replace(emptyList(), 0, QueueSessionType.FM) }
         assertEquals(before, queue.snapshot())
         assertThrows(IllegalArgumentException::class.java) { queue.restore(before.copy(order = listOf("missing"))) }
         assertEquals(before, queue.snapshot())
+    }
+
+    @Test fun sessionTypeChangesOnlyWithExplicitReplacementOrTeardown() {
+        val queue = PlaybackQueue()
+        val commands = QueueCommands(queue)
+        assertEquals(QueueSessionType.NORMAL, queue.sessionType)
+        val original = queue.play(song("old"))
+        val first = queue.replace(listOf(song("fm"), song("fm")), 0, QueueSessionType.FM)
+        assertEquals(QueueSessionType.FM, queue.sessionType)
+        assertFalse(queue.entries.contains(original))
+        commands.enqueueNext(song("fm"))
+        assertEquals(first, queue.current)
+        commands.insertAndPlay(song("fm"))
+        val beforeSelection = queue.entries
+        commands.selectEntry(first.entryId)
+        assertEquals(beforeSelection, queue.entries)
+        assertEquals(4, queue.entries.size)
+        assertEquals(QueueSessionType.FM, queue.sessionType)
+        val saved = queue.snapshot()
+        queue.clear()
+        assertEquals(QueueSessionType.NORMAL, queue.sessionType)
+        queue.restore(saved)
+        assertEquals(saved, queue.snapshot())
+        assertEquals(QueueSessionType.FM, queue.sessionType)
+        queue.replace(listOf(song("daily")), 0, QueueSessionType.NORMAL)
+        assertEquals(QueueSessionType.NORMAL, queue.sessionType)
+        assertEquals(listOf(song("daily")), queue.entries.map { it.song })
+        queue.setMode(PlaybackMode.SHUFFLE)
+        assertEquals(QueueSessionType.NORMAL, queue.sessionType)
     }
 }

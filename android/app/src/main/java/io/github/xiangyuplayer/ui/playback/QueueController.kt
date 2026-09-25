@@ -12,6 +12,7 @@ import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.playback.PlaybackProtocol
 import io.github.xiangyuplayer.playback.QueueEntry
 import io.github.xiangyuplayer.playback.QueuePages
+import io.github.xiangyuplayer.playback.QueueSessionType
 import java.io.File
 import java.util.concurrent.Executor
 import kotlin.coroutines.resume
@@ -108,7 +109,7 @@ internal class QueueController(
         }
     }
 
-    fun replaceAndPlay(songs: List<Song>, selectedIndex: Int) {
+    fun replaceAndPlay(songs: List<Song>, selectedIndex: Int, target: QueueSessionType) {
         cancelReplacement()
         val controller = remote
         if (controller == null || selectedIndex !in songs.indices) { replacementFailed(); return }
@@ -119,7 +120,7 @@ internal class QueueController(
             try {
                 // Receive the ticket even if cancelled during this tiny command, so finally can cancel it.
                 val ticket = withContext(NonCancellable) {
-                    controller.command(PlaybackProtocol.beginReplace).extras.also {
+                    controller.command(PlaybackProtocol.beginReplace, PlaybackProtocol.replacementTarget(target)).extras.also {
                         reference = checkNotNull(it.getString("reference"))
                     }
                 }

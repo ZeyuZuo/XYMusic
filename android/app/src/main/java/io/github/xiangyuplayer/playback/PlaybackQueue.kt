@@ -6,6 +6,9 @@ import kotlin.random.Random
 
 enum class PlaybackMode { SEQUENTIAL, SHUFFLE, REPEAT_ONE }
 
+/** Active queue context, independent of traversal mode. FM networking is added by the home feature. */
+enum class QueueSessionType { NORMAL, FM }
+
 data class QueueEntry(val entryId: String, val song: Song) {
     companion object {
         fun create(song: Song) = QueueEntry(UUID.randomUUID().toString(), song)
@@ -17,6 +20,8 @@ class PlaybackQueue(private val random: Random = Random.Default) {
     private val items = mutableListOf<QueueEntry>()
     private val order = mutableListOf<String>()
     var revision = 0L
+        private set
+    var sessionType = QueueSessionType.NORMAL
         private set
     var mode = PlaybackMode.SEQUENTIAL
         private set
@@ -43,11 +48,11 @@ class PlaybackQueue(private val random: Random = Random.Default) {
     }
 
     /** Validate and prepare before replacing, so a bad selection leaves the old queue intact. */
-    fun replace(songs: List<Song>, selectedIndex: Int): QueueEntry {
+    fun replace(songs: List<Song>, selectedIndex: Int, target: QueueSessionType): QueueEntry {
         require(selectedIndex in songs.indices)
         val replacement = songs.map(QueueEntry::create)
         val snapshot = QueueSnapshot(replacement, replacement.map { it.entryId },
-            replacement[selectedIndex].entryId, PlaybackMode.SEQUENTIAL)
+            replacement[selectedIndex].entryId, PlaybackMode.SEQUENTIAL, target)
         restore(snapshot)
         return current!!
     }
@@ -83,7 +88,7 @@ class PlaybackQueue(private val random: Random = Random.Default) {
         } else order.addAll(items.map { it.entryId })
     }
 
-    fun snapshot() = QueueSnapshot(entries, order.toList(), current?.entryId, mode)
+    fun snapshot() = QueueSnapshot(entries, order.toList(), current?.entryId, mode, sessionType)
 
     fun restore(snapshot: QueueSnapshot) {
         snapshot.validate()
@@ -91,20 +96,24 @@ class PlaybackQueue(private val random: Random = Random.Default) {
         items.addAll(snapshot.entries)
         order.clear()
         order.addAll(snapshot.order)
+        sessionType = snapshot.sessionType
         mode = snapshot.mode
         current = snapshot.current?.let { id -> items.first { it.entryId == id } }
         revision++
     }
 
-    fun clear() { items.clear(); order.clear(); current = null; revision++ }
+    /** Session teardown (including logout), not an FM user action. */
+    fun clear() { items.clear(); order.clear(); current = null; sessionType = QueueSessionType.NORMAL; revision++ }
 }
 
-data class QueueSnapshot(val entries: List<QueueEntry>, val order: List<String>, val current: String?, val mode: PlaybackMode) {
+data class QueueSnapshot(val entries: List<QueueEntry>, val order: List<String>, val current: String?, val mode: PlaybackMode,
+    val sessionType: QueueSessionType = QueueSessionType.NORMAL) {
     fun validate() {
         val ids = entries.map { it.entryId }
         require(ids.all { it.isNotBlank() } && ids.toSet().size == ids.size)
         require(order.size == ids.size && order.toSet() == ids.toSet())
         require(current == null || current in ids)
         require(mode in PlaybackMode.entries)
+        require(sessionType in QueueSessionType.entries)
     }
 }

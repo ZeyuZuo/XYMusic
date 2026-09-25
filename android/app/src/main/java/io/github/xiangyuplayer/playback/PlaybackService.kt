@@ -362,7 +362,7 @@ class PlaybackService : MediaSessionService() {
                     return@launch
                 }
                 when (customCommand.customAction) {
-                    PlaybackProtocol.beginReplace.customAction -> result.set(transfers.begin())
+                    PlaybackProtocol.beginReplace.customAction -> result.set(transfers.begin(args))
                     PlaybackProtocol.replace.customAction -> result.setFuture(transfers.replace(args))
                     PlaybackProtocol.readQueue.customAction -> result.setFuture(transfers.page(args))
                     PlaybackProtocol.cancelReplace.customAction -> {

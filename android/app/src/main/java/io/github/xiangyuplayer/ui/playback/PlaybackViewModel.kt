@@ -19,6 +19,7 @@ import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.playback.PlaybackProtocol
 import io.github.xiangyuplayer.playback.PlaybackService
 import io.github.xiangyuplayer.playback.QueueEntry
+import io.github.xiangyuplayer.playback.QueueSessionType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -104,8 +105,8 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     fun next() { queueController.cancelReplacement(); controller?.seekToNextMediaItem() }
     fun previous() { queueController.cancelReplacement(); controller?.seekToPreviousMediaItem() }
     fun enqueue(song: Song) = queueCommand(PlaybackProtocol.enqueue, PlaybackProtocol.songBundle(song), R.string.queue_added_next)
-    fun replaceAndPlay(songs: List<Song>, selectedIndex: Int) =
-        queueController.replaceAndPlay(songs, selectedIndex)
+    fun replaceAndPlay(songs: List<Song>, selectedIndex: Int, target: QueueSessionType) =
+        queueController.replaceAndPlay(songs, selectedIndex, target)
     fun setQueueVisible(visible: Boolean) = queueController.setVisible(visible)
     fun retryQueue() = queueController.retry()
     fun select(entryId: String) = queueCommand(PlaybackProtocol.select, PlaybackProtocol.entryBundle(entryId))
@@ -189,6 +190,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
             queue = mutable.value.queue, queueCount = mutable.value.queueCount,
             queueLoading = mutable.value.queueLoading, queueLoadFailed = mutable.value.queueLoadFailed,
             currentEntryId = extras.getString("currentEntryId"),
+            sessionType = PlaybackProtocol.sessionType(extras) ?: QueueSessionType.NORMAL,
             mode = PlaybackMode.entries.firstOrNull { it.name == extras.getString("mode") } ?: PlaybackMode.SEQUENTIAL,
             hasNext = extras.getBoolean("hasNext"), hasPrevious = extras.getBoolean("hasPrevious"),
             actionMessage = mutable.value.actionMessage,
@@ -221,6 +223,7 @@ data class PlaybackUiState(
     val queueLoadFailed: Boolean = false,
     val currentEntryId: String? = null,
     val mode: PlaybackMode = PlaybackMode.SEQUENTIAL,
+    val sessionType: QueueSessionType = QueueSessionType.NORMAL,
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,
     val actionMessage: Int? = null,

@@ -52,6 +52,11 @@ internal object PlaybackProtocol {
         putLong("positionMs", positionMs)
     }
 
+    fun sessionType(bundle: Bundle): QueueSessionType? =
+        QueueSessionType.entries.firstOrNull { it.name == bundle.getString("sessionType") }
+
+    fun replacementTarget(target: QueueSessionType) = Bundle().apply { putString("sessionType", target.name) }
+
     fun replaceBundle(reference: String, selectedIndex: Int) = Bundle().apply {
         putString("reference", reference)
         putInt("selectedIndex", selectedIndex)
@@ -66,6 +71,7 @@ internal object PlaybackProtocol {
             putInt("queueCount", queue.size)
             putString("currentEntryId", queue.current?.entryId)
             putString("mode", queue.mode.name)
+            putString("sessionType", queue.sessionType.name)
             putBoolean("hasNext", queue.hasNext)
             putBoolean("hasPrevious", queue.hasPrevious)
             song?.let { putBundle("song", songBundle(it)) }

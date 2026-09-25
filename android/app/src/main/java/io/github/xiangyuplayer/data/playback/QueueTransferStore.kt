@@ -6,6 +6,7 @@ import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.playback.QueueEntry
 import io.github.xiangyuplayer.playback.QueuePages
 import io.github.xiangyuplayer.playback.QueueSnapshot
+import io.github.xiangyuplayer.playback.QueueSessionType
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.util.UUID
@@ -25,7 +26,7 @@ internal class QueueTransferStore(private val directory: File) {
     }
 
     /** Builds the exact candidate snapshot before the service changes any live playback state. */
-    fun read(reference: String, owner: String, selectedIndex: Int): QueueSnapshot {
+    fun read(reference: String, owner: String, selectedIndex: Int, targetType: QueueSessionType): QueueSnapshot {
         val target = file(reference)
         require(target.length() in 1..PlaybackSnapshotCodec.MAX_BYTES.toLong())
         val bytes = target.inputStream().use { input ->
@@ -46,7 +47,7 @@ internal class QueueTransferStore(private val directory: File) {
         val entries = transfer.songs.map(QueueEntry::create)
         // Every individual record must fit a response page, including its entry identity.
         entries.forEach { QueuePages.requireFits(it) }
-        val snapshot = QueueSnapshot(entries, entries.map { it.entryId }, entries[selectedIndex].entryId, PlaybackMode.SEQUENTIAL)
+        val snapshot = QueueSnapshot(entries, entries.map { it.entryId }, entries[selectedIndex].entryId, PlaybackMode.SEQUENTIAL, targetType)
         val snapshotBytes = PlaybackSnapshotCodec.encodeBytes(PlaybackSnapshot(owner, snapshot, 0, null, false))
         // Leave room for timing fields and mode changes in later saves.
         require(snapshotBytes.size <= PlaybackSnapshotCodec.MAX_BYTES - 1024)
