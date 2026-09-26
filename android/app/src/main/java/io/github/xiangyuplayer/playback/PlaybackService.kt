@@ -33,6 +33,7 @@ import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.playback.KuGouAudioSourceResolver
 import io.github.xiangyuplayer.data.auth.AccountSession
 import io.github.xiangyuplayer.data.auth.AccountSessions
+import io.github.xiangyuplayer.data.recommendation.FmRepository
 import io.github.xiangyuplayer.domain.model.AudioSource
 import io.github.xiangyuplayer.domain.model.AudioSourceResolver
 import io.github.xiangyuplayer.domain.model.PlaybackAccess
@@ -85,11 +86,23 @@ class PlaybackService : MediaSessionService() {
         }
         fm = FmCoordinator(scope, queue, { remaining ->
             val current = account ?: throw IllegalStateException("No session")
-            val songs = io.github.xiangyuplayer.data.recommendation.FmRepository(current.saved).fetch(remaining)
+            val songs = FmRepository(current.saved).fetch(remaining)
             if (current.identity != account?.identity || current.epoch != SessionStore.changes.value.accountEpoch)
                 throw CancellationException("Account changed")
             songs
-        }, { entry -> playEntry(entry) }, { publish() })
+        }, { entry -> playEntry(entry) }, { publish() }, submitDislike = { song, remaining ->
+            val current = account ?: throw IllegalStateException("No session")
+            FmRepository(current.saved).dislike(song, remaining)
+            if (current.identity != account?.identity || current.epoch != SessionStore.changes.value.accountEpoch)
+                throw CancellationException("Account changed")
+        }, disliked = { entryId ->
+            if (queue.current?.entryId == entryId) {
+                val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
+                val next = queue.next()
+                if (next != null) playEntry(next, start)
+                else { player.pause(); publish() }
+            }
+        })
         stateStore = PlaybackStateStore(this) { owner, success ->
             scope.launch {
                 if (account?.saved?.playbackId == owner && storageError == success) { storageError = !success; publish(save = false) }
@@ -301,6 +314,9 @@ class PlaybackService : MediaSessionService() {
             savedDuration?.let { putLong("savedDuration", it) }
             putBoolean("storageError", storageError)
             putString("fmStatus", fm.status.name)
+            putString("fmFeedbackStatus", fm.feedbackStatus.name)
+            putString("fmFeedbackEntryId", fm.feedbackEntryId)
+            putBoolean("canDislikeFm", fm.canDislike(queue.current?.entryId))
         })
         if (::sessionPlayer.isInitialized) sessionPlayer.refreshQueue()
         if (save) saveState()
@@ -415,6 +431,12 @@ class PlaybackService : MediaSessionService() {
 
         private fun handleCommand(customCommand: SessionCommand, args: Bundle): SessionResult {
             val action = customCommand.customAction
+            if (action == PlaybackProtocol.dislikeFm.customAction) {
+                if (account == null || account?.epoch != SessionStore.changes.value.accountEpoch)
+                    return SessionResult(SessionError.ERROR_PERMISSION_DENIED)
+                return SessionResult(if (fm.dislike(PlaybackProtocol.entryId(args)))
+                    SessionResult.RESULT_SUCCESS else SessionError.ERROR_BAD_VALUE)
+            }
             if (action in listOf(PlaybackProtocol.startFm.customAction, PlaybackProtocol.retryFm.customAction)) {
                 if (account == null || account?.epoch != SessionStore.changes.value.accountEpoch)
                     return SessionResult(SessionError.ERROR_PERMISSION_DENIED)

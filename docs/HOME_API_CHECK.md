@@ -118,3 +118,11 @@ FM 响应也含 tracker_info.auth 等不应进入缓存的字段。自动补歌�
 ## 验证记录
 
 临时手动核对工具构建成功；两次真实首批请求和本地参数/缓存断言完成。移除工具后运行 `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` 成功，正常应用源码未变，已有 68 项测试对应任务命中 Gradle 缓存；本轮没有新增依赖真实账号的自动化测试。脱敏 JSON 可解析，`git diff --check` 通过。仅 README、本计划链接文档和观察记录待提交。
+
+## 阶段 3 源码核对（2026-09-26）
+
+再次精确读取同一上游基线的 `module/personal_fm.js`、`interface.d.ts`、`docs/README.md` 私人 FM 小节及 `util/request.js`。文档明确 action=garbage 为不喜欢，hash/songid/playtime 均为可选；模块原样转发标识与时长，布尔 false 映射为非完成。请求封装将 status=0 或非零 error_code 视为失败，但没有垃圾反馈独立回执字段或时长单位定义。
+
+客户端显式反馈沿用已观察的严格数字 status=1/error_code=0 业务检查，不仅依赖 HTTP 200；缺失或异常均按未确认处理。该判断尚未得到真实 garbage 响应验证。当前只实现用户明确点击后的 garbage 请求，传推荐原始 hash/sourceId 和实际剩余数，省略 playtime，不上报完整/试听完成。反馈响应可能附带推荐；当前不消费该列表，也不因附带列表缺失/损坏重发已经确认的反馈，后续补歌走独立串行读取。
+
+本次没有使用真实账号提交反馈，没有复制上游源码，没有修改上游仓库。自动播放事件保持未接入；不能据曲长以秒计推导反馈时长单位。

@@ -13,6 +13,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.playback.FmStatus
+import io.github.xiangyuplayer.playback.FmFeedbackStatus
 import io.github.xiangyuplayer.playback.PlaybackMode
 import androidx.media3.session.SessionCommand
 import io.github.xiangyuplayer.domain.model.PlaybackFailure
@@ -105,6 +106,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
     fun startFm() = queueCommand(PlaybackProtocol.startFm)
     fun retryFm() = queueCommand(PlaybackProtocol.retryFm)
+    fun dislikeFm(entryId: String) = queueCommand(PlaybackProtocol.dislikeFm, PlaybackProtocol.entryBundle(entryId))
 
     fun next() { queueController.cancelReplacement(); controller?.seekToNextMediaItem() }
     fun previous() { queueController.cancelReplacement(); controller?.seekToPreviousMediaItem() }
@@ -196,6 +198,9 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
             currentEntryId = extras.getString("currentEntryId"),
             sessionType = PlaybackProtocol.sessionType(extras) ?: QueueSessionType.NORMAL,
             fmStatus = FmStatus.entries.firstOrNull { it.name == extras.getString("fmStatus") } ?: FmStatus.IDLE,
+            fmFeedbackStatus = FmFeedbackStatus.entries.firstOrNull { it.name == extras.getString("fmFeedbackStatus") } ?: FmFeedbackStatus.IDLE,
+            fmFeedbackEntryId = extras.getString("fmFeedbackEntryId"),
+            canDislikeFm = extras.getBoolean("canDislikeFm"),
             ended = remote.playbackState == Player.STATE_ENDED,
             mode = PlaybackMode.entries.firstOrNull { it.name == extras.getString("mode") } ?: PlaybackMode.SEQUENTIAL,
             hasNext = extras.getBoolean("hasNext"), hasPrevious = extras.getBoolean("hasPrevious"),
@@ -231,6 +236,9 @@ data class PlaybackUiState(
     val mode: PlaybackMode = PlaybackMode.SEQUENTIAL,
     val sessionType: QueueSessionType = QueueSessionType.NORMAL,
     val fmStatus: FmStatus = FmStatus.IDLE,
+    val fmFeedbackStatus: FmFeedbackStatus = FmFeedbackStatus.IDLE,
+    val fmFeedbackEntryId: String? = null,
+    val canDislikeFm: Boolean = false,
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,
     val actionMessage: Int? = null,

@@ -161,4 +161,85 @@ class FmCoordinatorTest {
         fm.retry(); yield()
         assertEquals(listOf(song(26)), queue.upcoming.map { it.song })
     }
+    private fun recommendation(id: Int) = song(id).copy(source = "personal_fm", sourceId = id.toString())
+
+    @Test fun feedbackIsExplicitSingleFlightAndNeverSentByPlaybackOrRetry() = runBlocking {
+        val queue = PlaybackQueue().apply { replace((1..5).map(::recommendation), 0, QueueSessionType.FM) }
+        val response = CompletableDeferred<Unit>()
+        var sends = 0
+        var accepted = 0
+        val fm = FmCoordinator(this, queue, { emptyList() }, {}, {},
+            submitDislike = { song, remaining ->
+                assertEquals(recommendation(1), song)
+                assertEquals(4, remaining)
+                sends++
+                response.await()
+            }, disliked = { accepted++ })
+        fm.playbackStarted(); fm.check(); fm.retry(); yield()
+        assertEquals(0, sends)
+        val entryId = queue.current!!.entryId
+        assertFalse(fm.dislike("stale"))
+        assertTrue(fm.dislike(entryId))
+        repeat(5) { assertFalse(fm.dislike(entryId)); fm.check(); fm.retry() }
+        yield()
+        assertEquals(1, sends)
+        assertEquals(0, accepted)
+        response.complete(Unit); yield()
+        assertEquals(FmFeedbackStatus.SUCCESS, fm.feedbackStatus)
+        assertEquals(1, accepted)
+        assertFalse(fm.dislike(entryId))
+    }
+
+    @Test fun feedbackFailurePreservesQueueAndOnlyExplicitActionResubmits() = runBlocking {
+        val queue = PlaybackQueue().apply { replace(listOf(recommendation(1)), 0, QueueSessionType.FM) }
+        val original = queue.snapshot()
+        var sends = 0
+        val fm = FmCoordinator(this, queue, { emptyList() }, {}, {},
+            submitDislike = { _, _ -> sends++; error("uncertain network result") },
+            disliked = { fail("Must not advance") })
+        assertTrue(fm.dislike(queue.current!!.entryId)); yield()
+        assertEquals(FmFeedbackStatus.ERROR, fm.feedbackStatus)
+        repeat(5) { fm.playbackStarted(); fm.check() }; yield()
+        fm.retry(); yield()
+        assertEquals(1, sends)
+        assertEquals(original, queue.snapshot())
+        assertTrue(fm.dislike(queue.current!!.entryId)); yield()
+        assertEquals(2, sends)
+    }
+
+    @Test fun refillAndFeedbackNeverOverlapAndInsertedSearchSongCannotBeReported() = runBlocking {
+        val queue = PlaybackQueue().apply { replace(listOf(recommendation(1)), 0, QueueSessionType.FM) }
+        val response = CompletableDeferred<List<Song>>()
+        var sends = 0
+        val fm = FmCoordinator(this, queue, { response.await() }, {}, {},
+            submitDislike = { _, _ -> sends++ })
+        fm.playbackStarted(); yield()
+        assertFalse(fm.dislike(queue.current!!.entryId))
+        response.complete(listOf(recommendation(2))); yield()
+        queue.play(song(3))
+        assertFalse(fm.dislike(queue.current!!.entryId))
+        assertEquals(0, sends)
+    }
+
+    @Test fun lateFeedbackDoesNotAdvanceNewSelectionOrSurviveCancellation() = runBlocking {
+        for (cancel in listOf(false, true)) {
+            val queue = PlaybackQueue().apply { replace((1..5).map(::recommendation), 0, QueueSessionType.FM) }
+            val response = CompletableDeferred<Unit>()
+            var advances = 0
+            val fm = FmCoordinator(this, queue, { emptyList() }, {}, {},
+                submitDislike = { _, _ -> withContext(NonCancellable) { response.await() } },
+                disliked = { advances++ })
+            assertTrue(fm.dislike(queue.current!!.entryId)); yield()
+            if (cancel) {
+                fm.cancel(clearHistory = true)
+                queue.replace(listOf(song(99)), 0, QueueSessionType.NORMAL)
+            } else queue.next()
+            val before = queue.snapshot()
+            response.complete(Unit); yield(); yield()
+            assertEquals(before, queue.snapshot())
+            assertEquals(0, advances)
+            assertEquals(if (cancel) FmFeedbackStatus.IDLE else FmFeedbackStatus.SUCCESS, fm.feedbackStatus)
+        }
+    }
+
 }

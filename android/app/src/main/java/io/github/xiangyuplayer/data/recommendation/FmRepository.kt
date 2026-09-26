@@ -10,7 +10,7 @@ import io.github.xiangyuplayer.domain.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Recommendation reads only. Feedback fields intentionally do not exist in this request contract. */
+/** Recommendation reads and explicit feedback use separate request contracts. */
 internal class FmRepository(private val saved: SavedSession) {
     suspend fun fetch(remaining: Int): List<Song> = withContext(Dispatchers.IO) {
         require(remaining in 0..2)
@@ -20,13 +20,28 @@ internal class FmRepository(private val saved: SavedSession) {
             FmResponse.parse(client.api.personalFm(FmRequest(remaining)))
         } finally { client.close() }
     }
+
+    suspend fun dislike(song: Song, remaining: Int) = withContext(Dispatchers.IO) {
+        val request = FmDislikeRequest(song, remaining)
+        val client = KuGouClient(saved.endpoint)
+        try {
+            client.session.restore(ApiEndpoint.parse(saved.endpoint, BuildConfig.DEBUG), saved.cookies)
+            FmResponse.requireSuccess(client.api.dislikeFm(request))
+        } finally { client.close() }
+    }
 }
 
 internal class FmResponseException : Exception("Invalid FM response")
 
 internal object FmResponse {
+    fun requireSuccess(body: JsonObject) {
+        try {
+            require(body.number("status") == 1L && body.number("error_code") == 0L)
+        } catch (_: RuntimeException) { throw FmResponseException() }
+    }
+
     fun parse(body: JsonObject): List<Song> = try {
-        require(body.number("status") == 1L && body.number("error_code") == 0L)
+        requireSuccess(body)
         body.getAsJsonObject("data").getAsJsonArray("song_list").map { element ->
             val row = element.asJsonObject
             val hash = row.text("hash") ?: throw FmResponseException()
@@ -70,5 +85,21 @@ class FmRequest(val remain_songcnt: Int) {
     init { require(remain_songcnt in 0..2) }
     private val platform = "android"
     private val action = "play"
+    private val is_overplay = false
+}
+
+/** Optional playtime is omitted until its unit is verified. Never reports song completion. */
+class FmDislikeRequest(song: Song, remaining: Int) {
+    init {
+        require(song.source == "personal_fm")
+        require(song.hash.matches(Regex("[a-fA-F0-9]{32}")))
+        require(song.sourceId?.toLongOrNull()?.let { it > 0 } == true)
+        require(remaining >= 0)
+    }
+    private val hash = song.hash
+    private val songid = requireNotNull(song.sourceId)
+    private val remain_songcnt = remaining
+    private val platform = "android"
+    private val action = "garbage"
     private val is_overplay = false
 }

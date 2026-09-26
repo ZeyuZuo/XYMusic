@@ -65,4 +65,34 @@ class FmRepositoryTest {
             } finally { client.close() }
         }
     }
+    @Test fun dislikeUsesRecommendationIdentityAndChecksBusinessAcknowledgement() = runBlocking {
+        val song = FmResponse.parse(body("[$row]")).single()
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"status":1,"error_code":0}"""))
+            val client = KuGouClient(server.url("/").toString())
+            try {
+                FmResponse.requireSuccess(client.api.dislikeFm(FmDislikeRequest(song, 2)))
+                val request = server.takeRequest()
+                assertEquals("POST", request.method)
+                assertEquals("/personal/fm", request.path)
+                assertEquals("1", request.getHeader("X-Apicache-Bypass"))
+                val data = JsonParser.parseString(request.body.readUtf8()).asJsonObject
+                assertEquals(setOf("hash", "songid", "remain_songcnt", "platform", "action", "is_overplay"), data.keySet())
+                assertEquals("garbage", data["action"].asString)
+                assertEquals("789", data["songid"].asString)
+                assertEquals(song.hash, data["hash"].asString)
+                assertFalse(data["is_overplay"].asBoolean)
+                assertTrue(data["is_overplay"].asJsonPrimitive.isBoolean)
+            } finally { client.close() }
+        }
+        for (response in listOf("{}", """{"status":1,"error_code":9}""", """{"status":0,"error_code":0}""")) {
+            assertThrows(FmResponseException::class.java) {
+                FmResponse.requireSuccess(JsonParser.parseString(response).asJsonObject)
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) { FmDislikeRequest(song.copy(source = "search"), 2) }
+        assertThrows(IllegalArgumentException::class.java) { FmDislikeRequest(song.copy(sourceId = null), 2) }
+        Unit
+    }
+
 }

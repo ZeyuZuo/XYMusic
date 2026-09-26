@@ -11,6 +11,10 @@ import retrofit2.http.Headers
 interface KuGouApi {
     @Headers("X-Apicache-Bypass: 1")
     @POST("personal/fm")
+    suspend fun dislikeFm(@Body body: io.github.xiangyuplayer.data.recommendation.FmDislikeRequest): JsonObject
+
+    @Headers("X-Apicache-Bypass: 1")
+    @POST("personal/fm")
     suspend fun personalFm(@Body body: io.github.xiangyuplayer.data.recommendation.FmRequest): JsonObject
 
     @Headers("X-Apicache-Bypass: 1")

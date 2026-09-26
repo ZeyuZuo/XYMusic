@@ -137,7 +137,8 @@ fun XiangyuApp(settings: SettingsStore) {
     if (playbackVisible && playbackState.song != null) {
         PlaybackScreen(playbackState, playback::toggle, playback::retry, playback::seekTo,
             onPrevious = playback::previous, onNext = playback::next, onQueue = { queueVisible = true },
-            onMode = playback::setMode, snackbar = snackbar, lyrics = lyricsState, onLyricsRetry = lyrics::retry, onFmRetry = playback::retryFm) { playbackVisible = false }
+            onMode = playback::setMode, snackbar = snackbar, lyrics = lyricsState, onLyricsRetry = lyrics::retry,
+            onFmRetry = playback::retryFm, onFmDislike = playback::dislikeFm) { playbackVisible = false }
         return
     }
     BackHandler(enabled = destination != Destination.Home || dailyVisible) {

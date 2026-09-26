@@ -7,14 +7,17 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 enum class FmStatus { IDLE, STARTING, LOADING, READY, EMPTY, ERROR }
+enum class FmFeedbackStatus { IDLE, SENDING, SUCCESS, ERROR }
 
-/** Main-thread service state. No player, Activity, credentials, or feedback live here. */
+/** Service state, with recommendation and explicit feedback requests serialized on the main thread. */
 internal class FmCoordinator(
     private val scope: CoroutineScope,
     private val queue: PlaybackQueue,
     private val fetch: suspend (remaining: Int) -> List<Song>,
     private val started: (QueueEntry) -> Unit,
     private val changed: () -> Unit,
+    private val submitDislike: suspend (Song, Int) -> Unit = { _, _ -> error("Feedback unavailable") },
+    private val disliked: (String) -> Unit = {},
 ) {
     var status = FmStatus.IDLE
         private set
@@ -24,7 +27,52 @@ internal class FmCoordinator(
     private val recent = ArrayDeque<String>()
     private var lastEntry: String? = null
     private var initialEntry: String? = null
-    val busy get() = status == FmStatus.STARTING || status == FmStatus.LOADING
+    var feedbackStatus = FmFeedbackStatus.IDLE
+        private set
+    var feedbackEntryId: String? = null
+        private set
+    private val acknowledged = linkedSetOf<String>()
+    val busy get() = status == FmStatus.STARTING || status == FmStatus.LOADING || feedbackStatus == FmFeedbackStatus.SENDING
+
+    fun canDislike(entryId: String?): Boolean {
+        val entry = queue.current ?: return false
+        return entry.entryId == entryId && queue.sessionType == QueueSessionType.FM && !busy &&
+            entryId !in acknowledged && entry.song.source == "personal_fm" &&
+            entry.song.sourceId?.toLongOrNull()?.let { it > 0 } == true
+    }
+
+    /** Never invoked by skip, completion, process restoration or recommendation retry. */
+    fun dislike(entryId: String?): Boolean {
+        if (!canDislike(entryId)) return false
+        val entry = queue.current ?: return false
+        val remaining = queue.remaining
+        val ticket = ++generation
+        feedbackEntryId = entry.entryId
+        feedbackStatus = FmFeedbackStatus.SENDING
+        changed()
+        job = scope.launch {
+            try {
+                submitDislike(entry.song, remaining)
+                if (ticket != generation || queue.sessionType != QueueSessionType.FM) return@launch
+                acknowledged.add(entry.entryId)
+                while (acknowledged.size > RECENT_LIMIT) acknowledged.remove(acknowledged.first())
+                feedbackStatus = FmFeedbackStatus.SUCCESS
+                // A response for an earlier item must not skip the user's newer selection.
+                if (queue.current?.entryId == entry.entryId) disliked(entry.entryId)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (ticket == generation) feedbackStatus = FmFeedbackStatus.ERROR
+            } finally {
+                if (ticket == generation) {
+                    job = null
+                    changed()
+                    // A track may have advanced while feedback occupied the single request slot.
+                    check()
+                }
+            }
+        }
+        return true
+    }
 
     fun start() {
         if (queue.sessionType == QueueSessionType.FM || busy) return
@@ -68,7 +116,9 @@ internal class FmCoordinator(
         enabled = false
         initialEntry = null
         status = FmStatus.IDLE
-        if (clearHistory) { recent.clear(); lastEntry = null }
+        feedbackStatus = FmFeedbackStatus.IDLE
+        feedbackEntryId = null
+        if (clearHistory) { recent.clear(); lastEntry = null; acknowledged.clear() }
         changed()
     }
 

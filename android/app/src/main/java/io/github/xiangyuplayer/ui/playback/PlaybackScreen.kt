@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import coil.compose.SubcomposeAsyncImage
 import io.github.xiangyuplayer.playback.FmStatus
+import io.github.xiangyuplayer.playback.FmFeedbackStatus
 import io.github.xiangyuplayer.playback.QueueSessionType
 import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.R
@@ -50,10 +51,28 @@ fun PlaybackScreen(
     lyrics: LyricsUiState = LyricsUiState(),
     onLyricsRetry: () -> Unit = {},
     onFmRetry: () -> Unit = {},
+    onFmDislike: (String) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val song = state.song ?: return
     var showLyrics by rememberSaveable { mutableStateOf(false) }
+    var confirmFeedbackRetry by rememberSaveable(state.currentEntryId) { mutableStateOf(false) }
+    if (confirmFeedbackRetry) {
+        AlertDialog(
+            onDismissRequest = { confirmFeedbackRetry = false },
+            title = { Text(stringResource(R.string.fm_feedback_retry_title)) },
+            text = { Text(stringResource(R.string.fm_feedback_retry_detail)) },
+            confirmButton = {
+                TextButton(enabled = state.connected && state.canDislikeFm, onClick = {
+                    confirmFeedbackRetry = false
+                    state.currentEntryId?.let(onFmDislike)
+                }) { Text(stringResource(R.string.fm_feedback_resubmit)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmFeedbackRetry = false }) { Text(stringResource(R.string.fm_feedback_cancel)) }
+            },
+        )
+    }
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val images = remember { AvatarImages.create(context) }
@@ -94,6 +113,21 @@ fun PlaybackScreen(
                     if (state.ended && !state.hasNext) Text(stringResource(R.string.fm_exhausted))
                     if (state.fmStatus == FmStatus.EMPTY || state.fmStatus == FmStatus.ERROR)
                         TextButton(onClick = onFmRetry, enabled = state.connected) { Text(stringResource(R.string.fm_retry)) }
+                    val feedbackMessage = when (state.fmFeedbackStatus) {
+                        FmFeedbackStatus.SENDING -> R.string.fm_feedback_sending
+                        FmFeedbackStatus.SUCCESS -> R.string.fm_feedback_success
+                        FmFeedbackStatus.ERROR -> R.string.fm_feedback_error
+                        FmFeedbackStatus.IDLE -> null
+                    }
+                    feedbackMessage?.let { Text(stringResource(it)) }
+                    if (song.source == "personal_fm" && song.sourceId?.toLongOrNull()?.let { it > 0 } == true) {
+                        TextButton(enabled = state.connected && state.canDislikeFm,
+                            modifier = Modifier.heightIn(min = 48.dp), onClick = {
+                                if (state.fmFeedbackStatus == FmFeedbackStatus.ERROR && state.fmFeedbackEntryId == state.currentEntryId)
+                                    confirmFeedbackRetry = true
+                                else state.currentEntryId?.let(onFmDislike)
+                            }) { Text(stringResource(R.string.fm_dislike)) }
+                    }
                 }
                 Text(song.title, style = MaterialTheme.typography.headlineSmall)
                 if (song.artists.isNotEmpty()) Text(song.artists.joinToString(" / "),
