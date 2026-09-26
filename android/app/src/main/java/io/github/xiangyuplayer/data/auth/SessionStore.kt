@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import io.github.xiangyuplayer.data.playback.QueueTransferStore
+import io.github.xiangyuplayer.data.recommendation.DailyRecommendationCache
 
 // Called only from Dispatchers.IO. Account data never enters ordinary preferences or backups.
 interface SessionPersistence {
@@ -29,6 +30,7 @@ class SessionStore(context: Context) : SessionPersistence {
     private val gson = Gson()
     private val playbackFile = AtomicFile(File(context.noBackupFilesDir, PLAYBACK_FILE))
     private val queueTransfers = QueueTransferStore(File(context.noBackupFilesDir, QueueTransferStore.DIRECTORY))
+    private val dailyCache = DailyRecommendationCache(context.noBackupFilesDir)
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey(ALIAS, null) as? SecretKey)?.let { return it }
@@ -61,7 +63,7 @@ class SessionStore(context: Context) : SessionPersistence {
         val previous = readRaw()
         val id = previous?.takeIf { it.endpoint == session.endpoint && it.userId == session.userId }?.playbackId
             ?: UUID.randomUUID().toString()
-        if (previous?.playbackId != id) queueTransfers.clear()
+        if (previous?.playbackId != id) { queueTransfers.clear(); dailyCache.clear() }
         write(SavedSession(session.endpoint, session.userId, session.nickname, session.cookies, id))
     }
 
@@ -89,6 +91,7 @@ class SessionStore(context: Context) : SessionPersistence {
         file.delete()
         playbackFile.delete()
         queueTransfers.clear()
+        dailyCache.clear()
         revisions.update { SessionRevision(it.value + 1, it.accountEpoch + 1) }
     }
 

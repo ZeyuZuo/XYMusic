@@ -7,8 +7,8 @@ import io.github.xiangyuplayer.BuildConfig
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.auth.SessionStore
 import io.github.xiangyuplayer.data.lyrics.LyricsRepository
-import io.github.xiangyuplayer.data.playback.PlaybackSession
-import io.github.xiangyuplayer.data.playback.PlaybackSessions
+import io.github.xiangyuplayer.data.auth.AccountSession
+import io.github.xiangyuplayer.data.auth.AccountSessions
 import io.github.xiangyuplayer.data.remote.ApiEndpoint
 import io.github.xiangyuplayer.data.remote.KuGouClient
 import io.github.xiangyuplayer.domain.model.LyricLine
@@ -32,14 +32,14 @@ class LyricsViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         viewModelScope.launch {
-            combine(selected, PlaybackSessions(application).changes, attempt) { hash, session, _ -> hash to session }
+            combine(selected, AccountSessions(application).changes, attempt) { hash, session, _ -> hash to session }
                 .collectLatest { (hash, session) -> load(hash, session) }
         }
     }
     fun select(hash: String?) { selected.value = hash }
     fun retry() { attempt.value++ }
 
-    private suspend fun load(hash: String?, session: PlaybackSession?) {
+    private suspend fun load(hash: String?, session: AccountSession?) {
         mutable.value = LyricsUiState(hash)
         if (hash == null) return
         if (session == null) { mutable.value = LyricsUiState(hash, error = R.string.lyrics_account); return }

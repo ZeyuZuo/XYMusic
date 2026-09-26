@@ -31,8 +31,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import io.github.xiangyuplayer.MainActivity
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.playback.KuGouAudioSourceResolver
-import io.github.xiangyuplayer.data.playback.PlaybackSession
-import io.github.xiangyuplayer.data.playback.PlaybackSessions
+import io.github.xiangyuplayer.data.auth.AccountSession
+import io.github.xiangyuplayer.data.auth.AccountSessions
 import io.github.xiangyuplayer.domain.model.AudioSource
 import io.github.xiangyuplayer.domain.model.AudioSourceResolver
 import io.github.xiangyuplayer.domain.model.PlaybackAccess
@@ -53,7 +53,7 @@ import kotlinx.coroutines.CancellationException
 class PlaybackService : MediaSessionService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val accountReady = CompletableDeferred<Unit>()
-    private var account: PlaybackSession? = null
+    private var account: AccountSession? = null
     private var session: MediaSession? = null
     private lateinit var player: ExoPlayer
     private lateinit var requests: PlaybackRequests
@@ -139,7 +139,7 @@ class PlaybackService : MediaSessionService() {
             .setCallback(SessionCallback()).build()
         scope.launch {
             transfers.clearOrphans()
-            PlaybackSessions(applicationContext).changes.collect { updated ->
+            AccountSessions(applicationContext).changes.collect { updated ->
                 val initial = !accountReady.isCompleted
                 var restored = false
                 if (!initial && updated?.identity != account?.identity) {

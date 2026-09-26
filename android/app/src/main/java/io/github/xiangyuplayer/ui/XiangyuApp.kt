@@ -1,5 +1,11 @@
 package io.github.xiangyuplayer.ui
 
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.github.xiangyuplayer.ui.home.HomeScreen
+import io.github.xiangyuplayer.ui.home.DailyRecommendationScreen
+import io.github.xiangyuplayer.ui.home.DailyRecommendationViewModel
+import io.github.xiangyuplayer.playback.QueueSessionType
 import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
@@ -76,6 +82,15 @@ fun XiangyuApp(settings: SettingsStore) {
     val authState by auth.state.collectAsStateWithLifecycle()
     var loginVisible by rememberSaveable { mutableStateOf(false) }
     var destination by rememberSaveable { mutableStateOf(Destination.Home) }
+    val daily: DailyRecommendationViewModel = viewModel()
+    val dailyState by daily.state.collectAsStateWithLifecycle()
+    var dailyVisible by rememberSaveable { mutableStateOf(false) }
+    val dailyListState = rememberLazyListState()
+    val dailyActive = dailyVisible && destination == Destination.Home && !loginVisible
+    LifecycleResumeEffect(dailyActive) {
+        daily.setVisible(dailyActive)
+        onPauseOrDispose { daily.setVisible(false) }
+    }
     val playback: PlaybackViewModel = viewModel()
     val playbackState by playback.state.collectAsStateWithLifecycle()
     var playbackVisible by rememberSaveable { mutableStateOf(false) }
@@ -117,8 +132,8 @@ fun XiangyuApp(settings: SettingsStore) {
             onMode = playback::setMode, snackbar = snackbar, lyrics = lyricsState, onLyricsRetry = lyrics::retry) { playbackVisible = false }
         return
     }
-    BackHandler(enabled = destination != Destination.Home) {
-        destination = Destination.Home
+    BackHandler(enabled = destination != Destination.Home || dailyVisible) {
+        if (destination == Destination.Home) dailyVisible = false else destination = Destination.Home
     }
 
     Scaffold(
@@ -159,16 +174,21 @@ fun XiangyuApp(settings: SettingsStore) {
             SearchScreen(searchState, search, searchRepository != null, Modifier.padding(insets), playback::play, playback::enqueue)
             return@Scaffold
         }
+        if (destination == Destination.Home) {
+            if (dailyVisible) DailyRecommendationScreen(dailyState, dailyListState, Modifier.padding(insets),
+                daily::refresh, { dailyVisible = false }, { dailyVisible = false; loginVisible = true },
+                { songs, index -> playback.replaceAndPlay(songs, index, QueueSessionType.NORMAL) }, playback::enqueue)
+            else HomeScreen(authState.ready && authState.account != null, Modifier.padding(insets),
+                { dailyVisible = true }, { loginVisible = true })
+            return@Scaffold
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(insets),
             contentPadding = PaddingValues(24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             when (destination) {
-                Destination.Home -> {
-                    item { EmptyCard(Icons.Default.Home, R.string.daily_recommend, R.string.recommend_pending) }
-                    item { EmptyCard(Icons.Default.Favorite, R.string.personal_fm, R.string.recommend_pending) }
-                }
+                Destination.Home -> Unit
                 Destination.Search -> Unit
                 Destination.Library -> {
                     item { Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineMedium) }

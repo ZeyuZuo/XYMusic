@@ -5,9 +5,14 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.GET
 import retrofit2.http.Query
+import retrofit2.http.Headers
 
 /** Transport only. Map business errors and validated response fields in a repository. */
 interface KuGouApi {
+    @Headers("X-Apicache-Bypass: 1")
+    @POST("everyday/recommend")
+    suspend fun dailyRecommendation(@Body body: Map<String, String> = mapOf("platform" to "android")): JsonObject
+
     @POST("register/dev")
     suspend fun registerDevice(): JsonObject
 
