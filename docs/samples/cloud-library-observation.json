@@ -1,0 +1,45 @@
+{
+  "kind": "sanitized_observation_not_api_fixture",
+  "date": "2026-09-26",
+  "upstream_commit": "590ff03b3b9aa766be6fd03bf4d09f9127482fc5",
+  "executed_read_calls": 21,
+  "library": {
+    "list_count": 4,
+    "collect_count": 0,
+    "album_count": 0,
+    "pagesize": 2,
+    "page_lengths": [2, 2, null],
+    "rows": [
+      {"type": 0, "is_def": 1, "count": 0},
+      {"type": 0, "is_def": 2, "count": 446},
+      {"type": 0, "is_def": null, "count": 326},
+      {"type": 0, "is_def": null, "count": 15}
+    ],
+    "all_creators_match_account": true,
+    "all_is_mine_values": 0,
+    "liked_count_confirmed_by_user": true
+  },
+  "cloud_tracks": {
+    "path": "data.info",
+    "request_type": 0,
+    "pagesize": 2,
+    "count": 446,
+    "pages": [{"page": 1, "length": 2}, {"page": 2, "length": 2}, {"page": 223, "length": 2}, {"page": 224, "length": null}],
+    "adjacent_fileid_overlap": 0,
+    "adjacent_list_ver_equal": true,
+    "empty_playlist": {"count": 0, "info": null},
+    "duration_independently_cross_checked": false
+  },
+  "public_tracks": {
+    "path": "data.songs",
+    "pagesize": 2,
+    "count": 165,
+    "pages": [{"page": 1, "length": 2}, {"page": 2, "length": 2}, {"page": 83, "length": 1}, {"page": 84, "length": 0}],
+    "search_gid_matches_global_collection_id": true,
+    "later_list_info_empty_object": true,
+    "adjacent_fileid_overlap": 0,
+    "duration_check": {"hash_match_count": 1, "timelen": 92000, "search_duration_seconds": 92, "mixsongid_matches_search": true, "album_id_matches_search": true}
+  },
+  "invalid_detail": {"status": 1, "error_code": 0, "data_type": "empty_object", "valid_playlist": false},
+  "not_verified": ["collected_playlist_type_1", "private_or_forbidden_playlist", "deleted_playlist", "expired_auth", "real_duplicate_tracks", "concurrent_cloud_changes", "actual_playback"]
+}

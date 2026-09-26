@@ -163,11 +163,11 @@ HOST=127.0.0.1 corepack pnpm start
 
 ## 继续开发
 
-首页功能已建立 `feature/home` 分支，业务尚未接通。按 [首页功能实施计划](docs/HOME_PLAN.md)，先按 [队列修复与准备计划](docs/QUEUE_PREPARATION_PLAN.md) 落实 [播放列表核心交互规范](docs/PLAYBACK_INTERACTIONS.md)，完成验收后再做每日推荐和 FM。队列步骤 1–4 已实现独立条目、entryId 控制链路、私有文件整表替换、按版本分批读取和普通/FM 基础状态边界，允许重复插入。阶段 0 的两次首批及缓存核对已完成，日推/FM 业务尚未接通；人工闭环未完成，不把前置阶段标成已验收。
+首页功能已合并至 `main`：日推、FM 有限续播及显式“不喜欢”已实现，真实反馈和部分设备交互仍待验收，自动播放反馈未接入。当前在 `feature/cloud-library` 分支，按 [云端音乐库读取与播放计划](docs/CLOUD_LIBRARY_PLAN.md) 推进。已完成当前账号系统喜欢、自建/空歌单以及公开歌单的只读结构与分页核对，确认系统喜欢标志、公开 gid 引用和正常空页；收藏、权限异常等仍待样本，详见 [接口核对记录](docs/CLOUD_LIBRARY_API_CHECK.md)。音乐库仍是占位页，云端写操作不在本轮范围。
 
 播放按 [播放功能实施计划](docs/PLAYBACK_PLAN.md) 分阶段推进：点歌出声 → 完整播放页 → 队列 → 恢复与稳定性 → LRC。阶段 1–5 已实现，歌词与设备组合场景仍需手动验收。
 
-先按播放计划完成播放与歌词验收，再按 [v0.1 产品与实施计划](docs/V0.1.md) 推进推荐和云端音乐库；登录恢复和续期的剩余验收见 [登录验收说明](docs/LOGIN.md)。另见 [架构和里程碑](docs/ARCHITECTURE.md)、[第三方复用记录](docs/THIRD_PARTY.md) 和 [开发约定](AGENTS.md)。
+推进音乐库时继续补齐播放、歌词及 [FM](docs/FM_PLAYBACK.md) 的人工验收；登录恢复和续期的剩余验收见 [登录验收说明](docs/LOGIN.md)。整体范围仍以 [v0.1 产品与实施计划](docs/V0.1.md) 为准。另见 [架构和里程碑](docs/ARCHITECTURE.md)、[第三方复用记录](docs/THIRD_PARTY.md) 和 [开发约定](AGENTS.md)。
 
 新项目使用 GPL-3.0；复用的上游内容保留其许可，详见 `LICENSE` 和复用记录。
 
