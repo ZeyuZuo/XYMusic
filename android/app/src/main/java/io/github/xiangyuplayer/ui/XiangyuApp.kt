@@ -5,6 +5,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.xiangyuplayer.ui.home.HomeScreen
 import io.github.xiangyuplayer.ui.home.DailyRecommendationScreen
 import io.github.xiangyuplayer.ui.home.DailyRecommendationViewModel
+import io.github.xiangyuplayer.playback.FmStatus
 import io.github.xiangyuplayer.playback.QueueSessionType
 import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
@@ -95,6 +96,13 @@ fun XiangyuApp(settings: SettingsStore) {
     val playbackState by playback.state.collectAsStateWithLifecycle()
     var playbackVisible by rememberSaveable { mutableStateOf(false) }
     var queueVisible by rememberSaveable { mutableStateOf(false) }
+    var openFmWhenReady by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(playbackState.sessionType, playbackState.fmStatus) {
+        if (openFmWhenReady && playbackState.sessionType == QueueSessionType.FM) {
+            openFmWhenReady = false
+            playbackVisible = true
+        } else if (playbackState.fmStatus in listOf(FmStatus.EMPTY, FmStatus.ERROR)) openFmWhenReady = false
+    }
     LaunchedEffect(playbackState.song, playbackState.connected) {
         if (playbackState.connected && playbackState.song == null) playbackVisible = false
     }
@@ -129,7 +137,7 @@ fun XiangyuApp(settings: SettingsStore) {
     if (playbackVisible && playbackState.song != null) {
         PlaybackScreen(playbackState, playback::toggle, playback::retry, playback::seekTo,
             onPrevious = playback::previous, onNext = playback::next, onQueue = { queueVisible = true },
-            onMode = playback::setMode, snackbar = snackbar, lyrics = lyricsState, onLyricsRetry = lyrics::retry) { playbackVisible = false }
+            onMode = playback::setMode, snackbar = snackbar, lyrics = lyricsState, onLyricsRetry = lyrics::retry, onFmRetry = playback::retryFm) { playbackVisible = false }
         return
     }
     BackHandler(enabled = destination != Destination.Home || dailyVisible) {
@@ -178,8 +186,12 @@ fun XiangyuApp(settings: SettingsStore) {
             if (dailyVisible) DailyRecommendationScreen(dailyState, dailyListState, Modifier.padding(insets),
                 daily::refresh, { dailyVisible = false }, { dailyVisible = false; loginVisible = true },
                 { songs, index -> playback.replaceAndPlay(songs, index, QueueSessionType.NORMAL) }, playback::enqueue)
-            else HomeScreen(authState.ready && authState.account != null, Modifier.padding(insets),
-                { dailyVisible = true }, { loginVisible = true })
+            else HomeScreen(authState.ready && authState.account != null, playbackState.fmStatus,
+                playbackState.sessionType == QueueSessionType.FM, playbackState.connected, Modifier.padding(insets),
+                { dailyVisible = true }, { loginVisible = true }) {
+                if (playbackState.sessionType == QueueSessionType.FM) playbackVisible = true
+                else { openFmWhenReady = true; playback.startFm() }
+            }
             return@Scaffold
         }
         LazyColumn(

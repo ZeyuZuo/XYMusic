@@ -88,6 +88,30 @@ class PlaybackQueue(private val random: Random = Random.Default) {
         } else order.addAll(items.map { it.entryId })
     }
 
+    val remaining: Int get() = if (index < 0) 0 else order.size - index - 1
+    val upcoming: List<QueueEntry> get() {
+        val ids = order.drop((index + 1).coerceAtLeast(0)).toSet()
+        return items.filter { it.entryId in ids }
+    }
+
+    /** Automatic FM additions append, unlike an explicit user insertion after the current item. */
+    internal fun append(songs: List<Song>) {
+        if (songs.isEmpty()) return
+        val added = songs.map(QueueEntry::create)
+        items.addAll(added)
+        order.addAll(added.map { it.entryId })
+        revision++
+    }
+
+    internal fun trimHistory(keep: Int) {
+        require(keep >= 0)
+        val removed = order.take((index - keep).coerceAtLeast(0)).toSet()
+        if (removed.isEmpty()) return
+        items.removeAll { it.entryId in removed }
+        order.removeAll(removed)
+        revision++
+    }
+
     fun snapshot() = QueueSnapshot(entries, order.toList(), current?.entryId, mode, sessionType)
 
     fun restore(snapshot: QueueSnapshot) {

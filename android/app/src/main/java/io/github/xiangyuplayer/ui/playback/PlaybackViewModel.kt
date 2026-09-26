@@ -12,6 +12,7 @@ import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.xiangyuplayer.R
+import io.github.xiangyuplayer.playback.FmStatus
 import io.github.xiangyuplayer.playback.PlaybackMode
 import androidx.media3.session.SessionCommand
 import io.github.xiangyuplayer.domain.model.PlaybackFailure
@@ -102,6 +103,9 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         } else observeResult(remote.sendCustomCommand(PlaybackProtocol.play, PlaybackProtocol.songBundle(song)))
     }
 
+    fun startFm() = queueCommand(PlaybackProtocol.startFm)
+    fun retryFm() = queueCommand(PlaybackProtocol.retryFm)
+
     fun next() { queueController.cancelReplacement(); controller?.seekToNextMediaItem() }
     fun previous() { queueController.cancelReplacement(); controller?.seekToPreviousMediaItem() }
     fun enqueue(song: Song) = queueCommand(PlaybackProtocol.enqueue, PlaybackProtocol.songBundle(song), R.string.queue_added_next)
@@ -136,7 +140,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         val remote = controller ?: return
         if (remote.playWhenReady && remote.playbackState != Player.STATE_ENDED) remote.pause()
         else {
-            if (remote.playbackState == Player.STATE_ENDED) remote.seekToDefaultPosition()
+            if (remote.playbackState == Player.STATE_ENDED && mutable.value.sessionType != QueueSessionType.FM) remote.seekToDefaultPosition()
             remote.play()
         }
     }
@@ -191,6 +195,8 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
             queueLoading = mutable.value.queueLoading, queueLoadFailed = mutable.value.queueLoadFailed,
             currentEntryId = extras.getString("currentEntryId"),
             sessionType = PlaybackProtocol.sessionType(extras) ?: QueueSessionType.NORMAL,
+            fmStatus = FmStatus.entries.firstOrNull { it.name == extras.getString("fmStatus") } ?: FmStatus.IDLE,
+            ended = remote.playbackState == Player.STATE_ENDED,
             mode = PlaybackMode.entries.firstOrNull { it.name == extras.getString("mode") } ?: PlaybackMode.SEQUENTIAL,
             hasNext = extras.getBoolean("hasNext"), hasPrevious = extras.getBoolean("hasPrevious"),
             actionMessage = mutable.value.actionMessage,
@@ -224,6 +230,7 @@ data class PlaybackUiState(
     val currentEntryId: String? = null,
     val mode: PlaybackMode = PlaybackMode.SEQUENTIAL,
     val sessionType: QueueSessionType = QueueSessionType.NORMAL,
+    val fmStatus: FmStatus = FmStatus.IDLE,
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,
     val actionMessage: Int? = null,
@@ -231,6 +238,7 @@ data class PlaybackUiState(
     val resolving: Boolean = false,
     val buffering: Boolean = false,
     val playing: Boolean = false,
+    val ended: Boolean = false,
     val preview: Boolean = false,
     val previewStartMs: Long? = null,
     val failure: PlaybackFailure? = null,

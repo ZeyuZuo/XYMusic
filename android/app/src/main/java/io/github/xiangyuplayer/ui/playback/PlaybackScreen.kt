@@ -25,6 +25,8 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import coil.compose.SubcomposeAsyncImage
+import io.github.xiangyuplayer.playback.FmStatus
+import io.github.xiangyuplayer.playback.QueueSessionType
 import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.remote.AvatarImages
@@ -47,6 +49,7 @@ fun PlaybackScreen(
     snackbar: SnackbarHostState = remember { SnackbarHostState() },
     lyrics: LyricsUiState = LyricsUiState(),
     onLyricsRetry: () -> Unit = {},
+    onFmRetry: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     val song = state.song ?: return
@@ -85,6 +88,13 @@ fun PlaybackScreen(
                 )
             }
             Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.sessionType == QueueSessionType.FM) {
+                    Text(stringResource(R.string.fm_mode), color = MaterialTheme.colorScheme.primary)
+                    fmMessage(state.fmStatus)?.let { Text(stringResource(it)) }
+                    if (state.ended && !state.hasNext) Text(stringResource(R.string.fm_exhausted))
+                    if (state.fmStatus == FmStatus.EMPTY || state.fmStatus == FmStatus.ERROR)
+                        TextButton(onClick = onFmRetry, enabled = state.connected) { Text(stringResource(R.string.fm_retry)) }
+                }
                 Text(song.title, style = MaterialTheme.typography.headlineSmall)
                 if (song.artists.isNotEmpty()) Text(song.artists.joinToString(" / "),
                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -121,7 +131,8 @@ fun PlaybackScreen(
             }
             Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                PlaybackModeMenu(state.mode, state.connected, onMode)
+                if (state.sessionType == QueueSessionType.FM) Text(stringResource(R.string.fm_mode))
+                else PlaybackModeMenu(state.mode, state.connected, onMode)
                 TextButton(onClick = onQueue) { Text(stringResource(R.string.playback_queue)) }
             }
         }
@@ -188,4 +199,12 @@ private fun PlaybackScreenPreview() {
             ), onToggle = {}, onRetry = {}, onSeek = { _, _ -> }, onBack = {},
         )
     }
+}
+
+internal fun fmMessage(status: FmStatus): Int? = when (status) {
+    FmStatus.STARTING -> R.string.fm_starting
+    FmStatus.LOADING -> R.string.fm_loading
+    FmStatus.EMPTY -> R.string.fm_empty
+    FmStatus.ERROR -> R.string.fm_error
+    else -> null
 }

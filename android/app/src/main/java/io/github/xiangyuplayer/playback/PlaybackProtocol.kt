@@ -7,6 +7,8 @@ import io.github.xiangyuplayer.domain.model.Song
 
 /** Only public song metadata crosses the controller boundary, never the resolved audio URL. */
 internal object PlaybackProtocol {
+    val startFm = SessionCommand("io.github.xiangyuplayer.START_FM", Bundle.EMPTY)
+    val retryFm = SessionCommand("io.github.xiangyuplayer.RETRY_FM", Bundle.EMPTY)
     val play = SessionCommand("io.github.xiangyuplayer.PLAY_SONG", Bundle.EMPTY)
     val retry = SessionCommand("io.github.xiangyuplayer.RETRY_PLAYBACK", Bundle.EMPTY)
     val enqueue = SessionCommand("io.github.xiangyuplayer.ENQUEUE_NEXT", Bundle.EMPTY)
@@ -19,7 +21,7 @@ internal object PlaybackProtocol {
     val clear = SessionCommand("io.github.xiangyuplayer.CLEAR", Bundle.EMPTY)
     val mode = SessionCommand("io.github.xiangyuplayer.MODE", Bundle.EMPTY)
     val seek = SessionCommand("io.github.xiangyuplayer.SEEK_ENTRY", Bundle.EMPTY)
-    val queueCommands = listOf(play, retry, enqueue, beginReplace, replace, cancelReplace, readQueue, select, remove, clear, mode, seek)
+    val queueCommands = listOf(startFm, retryFm, play, retry, enqueue, beginReplace, replace, cancelReplace, readQueue, select, remove, clear, mode, seek)
 
     fun songBundle(song: Song) = Bundle().apply {
         putString("hash", song.hash)

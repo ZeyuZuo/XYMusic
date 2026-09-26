@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.xiangyuplayer.R
+import io.github.xiangyuplayer.playback.QueueSessionType
 import io.github.xiangyuplayer.playback.PlaybackMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -27,11 +28,12 @@ fun QueueSheet(state: PlaybackUiState, onSelect: (String) -> Unit, onRemove: (St
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.queue_count, state.queueCount), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = { confirmClear = true }, enabled = state.connected && state.queueCount > 0) {
+                if (state.sessionType != QueueSessionType.FM) TextButton(onClick = { confirmClear = true }, enabled = state.connected && state.queueCount > 0) {
                     Text(stringResource(R.string.queue_clear))
                 }
             }
-            PlaybackModeMenu(state.mode, state.connected, onMode, Modifier.padding(horizontal = 8.dp))
+            if (state.sessionType == QueueSessionType.FM) Text(stringResource(R.string.fm_queue_detail), Modifier.padding(horizontal = 16.dp))
+            else PlaybackModeMenu(state.mode, state.connected, onMode, Modifier.padding(horizontal = 8.dp))
             if (state.storageError) Text(stringResource(R.string.playback_storage_error), Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
             state.actionMessage?.let { Text(stringResource(it), Modifier.padding(horizontal = 16.dp)) }
             when {
@@ -58,7 +60,7 @@ fun QueueSheet(state: PlaybackUiState, onSelect: (String) -> Unit, onRemove: (St
                             if (current) Text(stringResource(R.string.queue_current), style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary)
                         }
-                        IconButton(onClick = { onRemove(entry.entryId) }, enabled = state.connected, modifier = Modifier.size(48.dp)) {
+                        IconButton(onClick = { onRemove(entry.entryId) }, enabled = state.connected && !(state.sessionType == QueueSessionType.FM && current && !state.hasNext), modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Close, stringResource(R.string.queue_remove_song, song.title))
                         }
                     }
@@ -66,7 +68,7 @@ fun QueueSheet(state: PlaybackUiState, onSelect: (String) -> Unit, onRemove: (St
             }
         }
     }
-    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false },
+    if (confirmClear && state.sessionType != QueueSessionType.FM) AlertDialog(onDismissRequest = { confirmClear = false },
         title = { Text(stringResource(R.string.queue_clear)) },
         text = { Text(stringResource(R.string.queue_clear_detail)) },
         confirmButton = { TextButton(onClick = { confirmClear = false; onClear() }) { Text(stringResource(R.string.queue_clear)) } },

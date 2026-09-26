@@ -10,6 +10,10 @@ import retrofit2.http.Headers
 /** Transport only. Map business errors and validated response fields in a repository. */
 interface KuGouApi {
     @Headers("X-Apicache-Bypass: 1")
+    @POST("personal/fm")
+    suspend fun personalFm(@Body body: io.github.xiangyuplayer.data.recommendation.FmRequest): JsonObject
+
+    @Headers("X-Apicache-Bypass: 1")
     @POST("everyday/recommend")
     suspend fun dailyRecommendation(@Body body: Map<String, String> = mapOf("platform" to "android")): JsonObject
 
