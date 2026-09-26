@@ -7,18 +7,22 @@ import io.github.xiangyuplayer.domain.model.Song
 
 /** Only public song metadata crosses the controller boundary, never the resolved audio URL. */
 internal object PlaybackProtocol {
+    val startFm = SessionCommand("io.github.xiangyuplayer.START_FM", Bundle.EMPTY)
+    val retryFm = SessionCommand("io.github.xiangyuplayer.RETRY_FM", Bundle.EMPTY)
+    val dislikeFm = SessionCommand("io.github.xiangyuplayer.DISLIKE_FM", Bundle.EMPTY)
     val play = SessionCommand("io.github.xiangyuplayer.PLAY_SONG", Bundle.EMPTY)
     val retry = SessionCommand("io.github.xiangyuplayer.RETRY_PLAYBACK", Bundle.EMPTY)
-
     val enqueue = SessionCommand("io.github.xiangyuplayer.ENQUEUE_NEXT", Bundle.EMPTY)
+    val beginReplace = SessionCommand("io.github.xiangyuplayer.BEGIN_QUEUE_REPLACEMENT", Bundle.EMPTY)
+    val replace = SessionCommand("io.github.xiangyuplayer.COMMIT_QUEUE_REPLACEMENT", Bundle.EMPTY)
+    val cancelReplace = SessionCommand("io.github.xiangyuplayer.CANCEL_QUEUE_REPLACEMENT", Bundle.EMPTY)
+    val readQueue = SessionCommand("io.github.xiangyuplayer.READ_QUEUE_PAGE", Bundle.EMPTY)
     val select = SessionCommand("io.github.xiangyuplayer.SELECT", Bundle.EMPTY)
     val remove = SessionCommand("io.github.xiangyuplayer.REMOVE", Bundle.EMPTY)
     val clear = SessionCommand("io.github.xiangyuplayer.CLEAR", Bundle.EMPTY)
     val mode = SessionCommand("io.github.xiangyuplayer.MODE", Bundle.EMPTY)
-    val queueCommands = listOf(play, retry, enqueue, select, remove, clear, mode)
-
-    @Suppress("DEPRECATION")
-    fun queue(bundle: Bundle): List<Song> = bundle.getParcelableArrayList<Bundle>("queue")?.mapNotNull(::song).orEmpty()
+    val seek = SessionCommand("io.github.xiangyuplayer.SEEK_ENTRY", Bundle.EMPTY)
+    val queueCommands = listOf(startFm, retryFm, dislikeFm, play, retry, enqueue, beginReplace, replace, cancelReplace, readQueue, select, remove, clear, mode, seek)
 
     fun songBundle(song: Song) = Bundle().apply {
         putString("hash", song.hash)
@@ -42,10 +46,35 @@ internal object PlaybackProtocol {
             io.github.xiangyuplayer.data.remote.ArtworkUrl.parse(bundle.getString("coverUrl")), bundle.getString("source"), bundle.getString("sourceId"))
     }
 
-    fun extras(song: Song?, resolving: Boolean = false, preview: Boolean = false, failure: PlaybackFailure? = null, queue: PlaybackQueue) =
+    fun entryId(bundle: Bundle) = bundle.getString("entryId")?.takeIf { it.isNotBlank() }
+
+    fun entryBundle(entryId: String) = Bundle().apply { putString("entryId", entryId) }
+
+    fun seekBundle(entryId: String, positionMs: Long) = Bundle().apply {
+        putString("entryId", entryId)
+        putLong("positionMs", positionMs)
+    }
+
+    fun sessionType(bundle: Bundle): QueueSessionType? =
+        QueueSessionType.entries.firstOrNull { it.name == bundle.getString("sessionType") }
+
+    fun replacementTarget(target: QueueSessionType) = Bundle().apply { putString("sessionType", target.name) }
+
+    fun replaceBundle(reference: String, selectedIndex: Int) = Bundle().apply {
+        putString("reference", reference)
+        putInt("selectedIndex", selectedIndex)
+    }
+
+    fun selectedIndex(bundle: Bundle): Int? =
+        if (bundle.containsKey("selectedIndex")) bundle.getInt("selectedIndex") else null
+
+    fun extras(song: Song?, resolving: Boolean = false, preview: Boolean = false, failure: PlaybackFailure? = null, queue: PlaybackQueue, queueVersion: String) =
         Bundle().apply {
-            putParcelableArrayList("queue", ArrayList(queue.songs.map(::songBundle)))
+            putString("queueVersion", queueVersion)
+            putInt("queueCount", queue.size)
+            putString("currentEntryId", queue.current?.entryId)
             putString("mode", queue.mode.name)
+            putString("sessionType", queue.sessionType.name)
             putBoolean("hasNext", queue.hasNext)
             putBoolean("hasPrevious", queue.hasPrevious)
             song?.let { putBundle("song", songBundle(it)) }

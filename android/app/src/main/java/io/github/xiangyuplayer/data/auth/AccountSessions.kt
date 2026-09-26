@@ -1,8 +1,6 @@
-package io.github.xiangyuplayer.data.playback
+package io.github.xiangyuplayer.data.auth
 
 import android.content.Context
-import io.github.xiangyuplayer.data.auth.SavedSession
-import io.github.xiangyuplayer.data.auth.SessionStore
 import io.github.xiangyuplayer.data.settings.SettingsStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -10,7 +8,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 
 /** Account observation outlives the Activity. This layer never holds or controls a player. */
-class PlaybackSessions(context: Context) {
+class AccountSessions(context: Context) {
     private val store = SessionStore(context)
     val changes = combine(SettingsStore(context).apiBaseUrl, SessionStore.changes) { endpoint, revision ->
         val saved = withContext(Dispatchers.IO) {
@@ -21,11 +19,11 @@ class PlaybackSessions(context: Context) {
             }
         }
         saved?.takeIf { it.endpoint == endpoint && it.userId.isNotBlank() }
-            ?.let { PlaybackSession(it, revision.accountEpoch) }
+            ?.let { AccountSession(it, revision.accountEpoch) }
     }
 }
 
-class PlaybackSession(val saved: SavedSession, val epoch: Long) {
+class AccountSession(val saved: SavedSession, val epoch: Long) {
     // Includes the logout epoch so rapidly logging into the same account still invalidates old playback.
     val identity = listOf(saved.endpoint, saved.userId, saved.playbackId, epoch.toString())
 }

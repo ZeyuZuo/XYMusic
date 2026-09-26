@@ -1,8 +1,11 @@
 package io.github.xiangyuplayer.data.playback
 
+import com.google.gson.Gson
+import com.google.gson.JsonParser
 import io.github.xiangyuplayer.domain.model.Song
 import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.playback.PlaybackQueue
+import io.github.xiangyuplayer.playback.QueueSessionType
 import kotlin.random.Random
 import org.junit.Assert.*
 import org.junit.Test
@@ -10,41 +13,83 @@ import org.junit.Test
 class PlaybackSnapshotTest {
     private fun snapshot(): PlaybackSnapshot {
         val queue = PlaybackQueue(Random(4))
-        listOf("a", "b", "c").forEach { queue.play(Song(it.repeat(32), "Synthetic $it", listOf("Test artist"))) }
-        queue.select("a".repeat(32))
+        queue.replace(listOf("a", "b", "a").map { Song(it.repeat(32), "Synthetic $it", listOf("Test artist")) }, 0, QueueSessionType.NORMAL)
         queue.setMode(PlaybackMode.SHUFFLE)
         queue.next()
-        return PlaybackSnapshot("synthetic-owner", queue.snapshot(), 83_000, 120_000, false)
+        return PlaybackSnapshot("synthetic-owner", queue.snapshot(), 83_000, 120_000, true, previewStartMs = 65_700)
     }
 
-    @Test fun roundTripRestoresCurrentPositionAndExactShuffleTraversal() {
-        val original = snapshot().copy(preview = true, previewStartMs = 65_700)
+    @Test fun roundTripRestoresDuplicateEntriesPositionAndExactShuffleTraversal() {
+        val original = snapshot()
         val restored = PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(original), original.owner)!!
         assertEquals(original, restored)
-        val legacy = PlaybackSnapshotCodec.encode(original).replace(",\"previewStartMs\":65700", "")
-        assertNull(PlaybackSnapshotCodec.decode(legacy, original.owner)!!.previewStartMs)
+        assertEquals(2, restored.queue.entries.map { it.song.hash }.toSet().size)
         val queue = PlaybackQueue(Random(99))
         queue.restore(restored.queue)
-        assertEquals(original.queue.current, queue.current!!.hash)
+        assertEquals(original.queue.current, queue.current!!.entryId)
         val index = original.queue.order.indexOf(original.queue.current)
-        assertEquals(original.queue.order[index - 1], queue.previous()!!.hash)
-        assertEquals(original.queue.current, queue.next()!!.hash)
+        assertEquals(original.queue.order[index - 1], queue.previous()!!.entryId)
+        assertEquals(original.queue.current, queue.next()!!.entryId)
         queue.clear()
         val empty = original.copy(queue = queue.snapshot(), positionMs = 0, durationMs = null)
         assertEquals(PlaybackMode.SHUFFLE,
             PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(empty), empty.owner)!!.queue.mode)
     }
 
-    @Test fun oldLoginAndCorruptOrUnsupportedRecordsAreRejected() {
+    @Test fun migratesV1HashesWithoutLosingPlaybackStateAndThenKeepsV2Ids() {
+        val root = JsonParser.parseString(PlaybackSnapshotCodec.encode(snapshot())).asJsonObject
+        val hashes = listOf("a".repeat(32), "b".repeat(32), "c".repeat(32))
+        val songs = hashes.map { Song(it, "Synthetic", emptyList()) }
+        root.addProperty("version", 1)
+        root.add("queue", Gson().toJsonTree(mapOf("songs" to songs,
+            "order" to listOf(hashes[2], hashes[0], hashes[1]), "current" to hashes[0], "mode" to "SHUFFLE")))
+        val migrated = PlaybackSnapshotCodec.decode(root.toString(), "synthetic-owner")!!
+        assertEquals(2, migrated.version)
+        assertEquals(QueueSessionType.NORMAL, migrated.queue.sessionType)
+        val entries = migrated.queue.entries
+        assertEquals(hashes, entries.map { it.song.hash })
+        assertEquals(listOf(entries[2].entryId, entries[0].entryId, entries[1].entryId), migrated.queue.order)
+        assertEquals(entries[0].entryId, migrated.queue.current)
+        assertEquals(PlaybackMode.SHUFFLE, migrated.queue.mode)
+        assertEquals(83_000L, migrated.positionMs)
+        assertEquals(120_000L, migrated.durationMs)
+        assertEquals(65_700L, migrated.previewStartMs)
+        assertTrue(migrated.preview)
+        assertEquals(migrated, PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(migrated), migrated.owner))
+        root.remove("previewStartMs")
+        assertNull(PlaybackSnapshotCodec.decode(root.toString(), migrated.owner)!!.previewStartMs)
+        root.getAsJsonObject("queue").addProperty("current", "missing")
+        assertNull(PlaybackSnapshotCodec.decode(root.toString(), migrated.owner))
+    }
+
+    @Test fun oldLoginCorruptIdentityAndUnsupportedRecordsAreRejected() {
         val snapshot = snapshot()
         val json = PlaybackSnapshotCodec.encode(snapshot)
         assertNull(PlaybackSnapshotCodec.decode(json, "new-login-owner"))
-        listOf("{", "null", "{}", json.replace("\"version\":1", "\"version\":2")).forEach {
+        listOf("{", "null", "{}", json.replace("\"version\":2", "\"version\":3")).forEach {
             assertNull(PlaybackSnapshotCodec.decode(it, snapshot.owner))
         }
-        val invalid = snapshot.copy(queue = snapshot.queue.copy(order = listOf("missing")))
-        assertNull(PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(invalid), snapshot.owner))
-        val negative = snapshot.copy(positionMs = -1)
-        assertNull(PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(negative), snapshot.owner))
+        val first = snapshot.queue.entries.first()
+        val invalid = listOf(
+            snapshot.copy(queue = snapshot.queue.copy(order = listOf("missing"))),
+            snapshot.copy(queue = snapshot.queue.copy(entries = listOf(first, first))),
+            snapshot.copy(queue = snapshot.queue.copy(current = "missing")),
+            snapshot.copy(queue = snapshot.queue.copy(entries = listOf(first.copy(entryId = "")))),
+            snapshot.copy(positionMs = -1),
+        )
+        invalid.forEach { assertNull(PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(it), snapshot.owner)) }
+    }
+
+    @Test fun legacyV2DefaultsToNormalAndExplicitSessionTypeRoundTripsWithoutLosingState() {
+        val original = snapshot()
+        val legacy = JsonParser.parseString(PlaybackSnapshotCodec.encode(original)).asJsonObject
+        legacy.getAsJsonObject("queue").remove("sessionType")
+        assertEquals(original, PlaybackSnapshotCodec.decode(legacy.toString(), original.owner))
+        val fm = original.copy(queue = original.queue.copy(sessionType = QueueSessionType.FM))
+        assertEquals(fm, PlaybackSnapshotCodec.decode(PlaybackSnapshotCodec.encode(fm), fm.owner))
+        legacy.getAsJsonObject("queue").addProperty("sessionType", "unknown")
+        assertNull(PlaybackSnapshotCodec.decode(legacy.toString(), original.owner))
+        legacy.getAsJsonObject("queue").add("sessionType", com.google.gson.JsonNull.INSTANCE)
+        assertNull(PlaybackSnapshotCodec.decode(legacy.toString(), original.owner))
     }
 }

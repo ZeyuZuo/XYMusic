@@ -31,8 +31,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import io.github.xiangyuplayer.MainActivity
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.playback.KuGouAudioSourceResolver
-import io.github.xiangyuplayer.data.playback.PlaybackSession
-import io.github.xiangyuplayer.data.playback.PlaybackSessions
+import io.github.xiangyuplayer.data.auth.AccountSession
+import io.github.xiangyuplayer.data.auth.AccountSessions
+import io.github.xiangyuplayer.data.recommendation.FmRepository
 import io.github.xiangyuplayer.domain.model.AudioSource
 import io.github.xiangyuplayer.domain.model.AudioSourceResolver
 import io.github.xiangyuplayer.domain.model.PlaybackAccess
@@ -53,13 +54,16 @@ import kotlinx.coroutines.CancellationException
 class PlaybackService : MediaSessionService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val accountReady = CompletableDeferred<Unit>()
-    private var account: PlaybackSession? = null
+    private var account: AccountSession? = null
     private var session: MediaSession? = null
     private lateinit var player: ExoPlayer
     private lateinit var requests: PlaybackRequests
     private lateinit var sessionPlayer: QueueSessionPlayer
     private val queue = PlaybackQueue()
-    private val selected get() = queue.current
+    private lateinit var fm: FmCoordinator
+    private val queueCommands = QueueCommands(queue)
+    private lateinit var transfers: QueueTransferSession
+    private val selected get() = queue.current?.song
     private var resolving = false
     private var failure: PlaybackFailure? = null
     private var preview = false
@@ -75,6 +79,30 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        transfers = QueueTransferSession(this, scope, queue, { account?.saved?.playbackId }, { account?.epoch }) { snapshot ->
+            fm.cancel(clearHistory = true)
+            queue.restore(snapshot)
+            playEntry(queue.current!!)
+        }
+        fm = FmCoordinator(scope, queue, { remaining ->
+            val current = account ?: throw IllegalStateException("No session")
+            val songs = FmRepository(current.saved).fetch(remaining)
+            if (current.identity != account?.identity || current.epoch != SessionStore.changes.value.accountEpoch)
+                throw CancellationException("Account changed")
+            songs
+        }, { entry -> playEntry(entry) }, { publish() }, submitDislike = { song, remaining ->
+            val current = account ?: throw IllegalStateException("No session")
+            FmRepository(current.saved).dislike(song, remaining)
+            if (current.identity != account?.identity || current.epoch != SessionStore.changes.value.accountEpoch)
+                throw CancellationException("Account changed")
+        }, disliked = { entryId ->
+            if (queue.current?.entryId == entryId) {
+                val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
+                val next = queue.next()
+                if (next != null) playEntry(next, start)
+                else { player.pause(); publish() }
+            }
+        })
         stateStore = PlaybackStateStore(this) { owner, success ->
             scope.launch {
                 if (account?.saved?.playbackId == owner && storageError == success) { storageError = !success; publish(save = false) }
@@ -93,11 +121,11 @@ class PlaybackService : MediaSessionService() {
                 if (changing) return
                 val status = generateSequence<Throwable>(error) { it.cause }
                     .filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
-                val song = selected
                 savedPosition = position()
                 savedDuration = duration()
-                if (song != null && recovery.tryRefresh(status)) {
-                    select(song, player.playWhenReady, savedPosition, refreshing = true)
+                val entry = queue.current
+                if (entry != null && recovery.tryRefresh(status)) {
+                    playEntry(entry, player.playWhenReady, savedPosition, refreshing = true)
                 } else {
                     failure = PlaybackFailure.PLAYER
                     publish()
@@ -114,7 +142,9 @@ class PlaybackService : MediaSessionService() {
                     }
                 }
                 if (playbackState == Player.STATE_ENDED && player.playWhenReady && !resolving && failure == null) {
-                    queue.next(automatic = true)?.let { select(it) }
+                    val next = queue.next(automatic = true)
+                    if (next != null) playEntry(next)
+                    else if (queue.sessionType == QueueSessionType.FM) { player.pause(); fm.check(); publish() }
                 }
             }
             override fun onEvents(player: Player, events: Player.Events) {
@@ -132,8 +162,10 @@ class PlaybackService : MediaSessionService() {
         session = MediaSession.Builder(this, sessionPlayer).setSessionActivity(activity)
             .setCallback(SessionCallback()).build()
         scope.launch {
-            PlaybackSessions(applicationContext).changes.collect { updated ->
+            transfers.clearOrphans()
+            AccountSessions(applicationContext).changes.collect { updated ->
                 val initial = !accountReady.isCompleted
+                var restored = false
                 if (!initial && updated?.identity != account?.identity) {
                     account = null
                     storageError = false
@@ -152,6 +184,11 @@ class PlaybackService : MediaSessionService() {
                         if (snapshot != null && updated.epoch == SessionStore.changes.value.accountEpoch) {
                             player.pause()
                             queue.restore(snapshot.queue)
+                            if (queue.sessionType == QueueSessionType.FM) {
+                                queue.setMode(PlaybackMode.SEQUENTIAL)
+                                queue.trimHistory(FmCoordinator.HISTORY_LIMIT)
+                            }
+                            restored = true
                             savedPosition = snapshot.positionMs
                             savedDuration = snapshot.durationMs
                             preview = snapshot.preview
@@ -165,7 +202,7 @@ class PlaybackService : MediaSessionService() {
                     clearPlayback()
                 }
                 accountReady.complete(Unit)
-                publish(save = false)
+                publish(save = restored)
             }
         }
         scope.launch {
@@ -191,15 +228,24 @@ class PlaybackService : MediaSessionService() {
 
     private fun resume(): Boolean {
         if (account?.epoch != SessionStore.changes.value.accountEpoch) return true
-        if (needsSource && selected != null && !resolving) {
-            select(selected!!, start = true, resumeMs = savedPosition)
+        if (queue.sessionType == QueueSessionType.FM && player.playbackState == Player.STATE_ENDED) {
+            val next = queue.next()
+            if (next != null) playEntry(next) else fm.retry()
             return true
         }
+        val entry = queue.current
+        if (needsSource && entry != null && !resolving) {
+            playEntry(entry, start = true, resumeMs = savedPosition)
+            return true
+        }
+        if (queue.sessionType == QueueSessionType.FM) { fm.playbackStarted(); publish() }
         return false
     }
 
     /** A system stop cancels resolution too; pressing play later re-resolves the saved position. */
     private fun unload() {
+        fm.cancel()
+        transfers.invalidate()
         savedPosition = position()
         savedDuration = duration()
         changing = true
@@ -213,7 +259,9 @@ class PlaybackService : MediaSessionService() {
         publish()
     }
 
-    private fun select(song: Song, start: Boolean = true, resumeMs: Long = 0, refreshing: Boolean = false) {
+    private fun playEntry(entry: QueueEntry, start: Boolean = true, resumeMs: Long = 0, refreshing: Boolean = false) {
+        if (queue.current?.entryId != entry.entryId) return
+        transfers.invalidate()
         changing = true
         requests.cancel()
         if (!refreshing) recovery.reset()
@@ -229,17 +277,18 @@ class PlaybackService : MediaSessionService() {
         if (resumeMs == 0L) { preview = false; previewStartMs = 0 }
         changing = false
         publish()
-        requests.play(song)
+        requests.play(entry.entryId, entry.song)
     }
 
-    private fun startPlayback(song: Song, source: AudioSource) {
+    private fun startPlayback(entryId: String, song: Song, source: AudioSource) {
+        if (queue.current?.entryId != entryId) return
         preview = source.access == PlaybackAccess.PREVIEW
         previewStartMs = source.previewStartMs
         val title = if (preview) getString(R.string.playback_preview_title, song.title) else song.title
         val metadata = MediaMetadata.Builder().setTitle(title).setArtist(song.artists.joinToString(" / "))
             .setAlbumTitle(song.albumTitle).setArtworkUri(song.coverUrl?.let(Uri::parse))
             .setIsPlayable(true).setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC).build()
-        val item = MediaItem.Builder().setMediaId(song.hash).setUri(source.url).setMediaMetadata(metadata)
+        val item = MediaItem.Builder().setMediaId(entryId).setUri(source.url).setMediaMetadata(metadata)
         source.previewDurationMs?.let { duration ->
             item.setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
                 .setStartPositionMs(source.previewStartMs)
@@ -253,26 +302,54 @@ class PlaybackService : MediaSessionService() {
         resolving = false
         needsSource = false
         changing = false
+        if (player.playWhenReady) fm.playbackStarted()
         publish()
     }
 
     private fun publish(save: Boolean = true) {
-        session?.setSessionExtras(PlaybackProtocol.extras(selected, resolving, preview, failure, queue).apply {
+        session?.setSessionExtras(PlaybackProtocol.extras(selected, resolving, preview, failure, queue, transfers.version).apply {
             previewStartMs?.let { putLong("previewStartMs", it) }
             putBoolean("needsSource", needsSource)
             putLong("savedPosition", savedPosition)
             savedDuration?.let { putLong("savedDuration", it) }
             putBoolean("storageError", storageError)
+            putString("fmStatus", fm.status.name)
+            putString("fmFeedbackStatus", fm.feedbackStatus.name)
+            putString("fmFeedbackEntryId", fm.feedbackEntryId)
+            putBoolean("canDislikeFm", fm.canDislike(queue.current?.entryId))
         })
         if (::sessionPlayer.isInitialized) sessionPlayer.refreshQueue()
         if (save) saveState()
     }
 
     private fun skip(forward: Boolean) {
+        transfers.invalidate()
+        if (queue.sessionType != QueueSessionType.FM && fm.busy) fm.cancel()
         if (account?.epoch != SessionStore.changes.value.accountEpoch) return
         val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
-        val song = if (forward) queue.next() else queue.previous()
-        song?.let { select(it, start) }
+        val entry = if (forward) queue.next() else queue.previous()
+        entry?.let { playEntry(it, start) }
+    }
+
+    private fun apply(result: QueueCommands.Result): Boolean = when (result) {
+        is QueueCommands.Result.Play -> {
+            playEntry(result.entry, result.start, result.resumeMs)
+            true
+        }
+        QueueCommands.Result.Publish -> {
+            fm.check()
+            publish()
+            true
+        }
+        is QueueCommands.Result.Seek -> {
+            if (!resolving && failure == null && player.currentMediaItem != null) {
+                val duration = player.duration.takeIf { it > 0 }
+                player.seekTo(if (duration != null) result.positionMs.coerceIn(0L, duration) else result.positionMs.coerceAtLeast(0))
+            }
+            true
+        }
+        QueueCommands.Result.Ignored -> true
+        QueueCommands.Result.Invalid -> false
     }
 
     private fun stopCurrent() {
@@ -294,6 +371,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun clearPlayback() {
+        fm.cancel(clearHistory = true)
+        transfers.invalidate()
         queue.clear()
         stopCurrent()
     }
@@ -317,45 +396,86 @@ class PlaybackService : MediaSessionService() {
             if (controller.uid != Process.myUid()) {
                 return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
             }
-            if (!accountReady.isCompleted) {
-                val result = SettableFuture.create<SessionResult>()
-                val epoch = SessionStore.changes.value.accountEpoch
-                val job = scope.launch {
-                    accountReady.await()
-                    result.set(if (epoch == SessionStore.changes.value.accountEpoch) handleCommand(customCommand, args)
-                        else SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+            val result = SettableFuture.create<SessionResult>()
+            val epoch = SessionStore.changes.value.accountEpoch
+            val job = scope.launch {
+                accountReady.await()
+                if (epoch != SessionStore.changes.value.accountEpoch) {
+                    result.set(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+                    return@launch
                 }
-                job.invokeOnCompletion { if (!result.isDone) result.cancel(false) }
-                return result
+                when (customCommand.customAction) {
+                    PlaybackProtocol.beginReplace.customAction -> {
+                        // Ordinary list intent supersedes startup/refill even while its file is being read.
+                        if (PlaybackProtocol.sessionType(args) == QueueSessionType.NORMAL) {
+                            fm.cancel()
+                            result.set(transfers.begin(args))
+                        } else result.set(SessionResult(SessionError.ERROR_BAD_VALUE))
+                    }
+                    PlaybackProtocol.replace.customAction -> result.setFuture(transfers.replace(args))
+                    PlaybackProtocol.readQueue.customAction -> result.setFuture(transfers.page(args))
+                    PlaybackProtocol.cancelReplace.customAction -> {
+                        transfers.cancel(args.getString("reference"))
+                        result.set(SessionResult(SessionResult.RESULT_SUCCESS))
+                    }
+                    else -> result.set(handleCommand(customCommand, args))
+                }
             }
-            return Futures.immediateFuture(handleCommand(customCommand, args))
+            job.invokeOnCompletion { if (!result.isDone && it != null) result.cancel(false) }
+            return result
+        }
+
+        override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
+            if (controller.uid == Process.myUid()) transfers.invalidate()
         }
 
         private fun handleCommand(customCommand: SessionCommand, args: Bundle): SessionResult {
             val action = customCommand.customAction
-            if (action in listOf(PlaybackProtocol.play, PlaybackProtocol.retry, PlaybackProtocol.enqueue, PlaybackProtocol.select)
+            if (action == PlaybackProtocol.dislikeFm.customAction) {
+                if (account == null || account?.epoch != SessionStore.changes.value.accountEpoch)
+                    return SessionResult(SessionError.ERROR_PERMISSION_DENIED)
+                return SessionResult(if (fm.dislike(PlaybackProtocol.entryId(args)))
+                    SessionResult.RESULT_SUCCESS else SessionError.ERROR_BAD_VALUE)
+            }
+            if (action in listOf(PlaybackProtocol.startFm.customAction, PlaybackProtocol.retryFm.customAction)) {
+                if (account == null || account?.epoch != SessionStore.changes.value.accountEpoch)
+                    return SessionResult(SessionError.ERROR_PERMISSION_DENIED)
+                transfers.invalidate()
+                if (action == PlaybackProtocol.startFm.customAction) fm.start() else fm.retry()
+                return SessionResult(SessionResult.RESULT_SUCCESS)
+            }
+            if (queue.sessionType == QueueSessionType.FM && action in
+                listOf(PlaybackProtocol.clear.customAction, PlaybackProtocol.mode.customAction))
+                return SessionResult(SessionError.ERROR_BAD_VALUE)
+            if (queue.sessionType != QueueSessionType.FM && fm.busy) fm.cancel()
+            if (action in listOf(PlaybackProtocol.play, PlaybackProtocol.retry, PlaybackProtocol.enqueue,
+                    PlaybackProtocol.replace, PlaybackProtocol.select, PlaybackProtocol.seek)
                     .map { it.customAction } && account?.epoch != SessionStore.changes.value.accountEpoch) {
                 return SessionResult(SessionError.ERROR_PERMISSION_DENIED)
             }
+            // Any newer user queue intent wins over an outstanding list replacement.
+            if (action in listOf(PlaybackProtocol.play, PlaybackProtocol.retry, PlaybackProtocol.enqueue,
+                    PlaybackProtocol.select, PlaybackProtocol.remove, PlaybackProtocol.clear, PlaybackProtocol.mode)
+                    .map { it.customAction }) transfers.invalidate()
             val success = when (action) {
-                PlaybackProtocol.play.customAction -> PlaybackProtocol.song(args)?.let { select(queue.play(it)); true } ?: false
-                PlaybackProtocol.retry.customAction -> selected?.let { select(it, resumeMs = position()); true } ?: false
-                PlaybackProtocol.enqueue.customAction -> PlaybackProtocol.song(args)?.let {
-                    val empty = selected == null
-                    queue.insertNext(it)
-                    if (empty) select(queue.current!!, start = false) else publish()
-                    true
-                } ?: false
-                PlaybackProtocol.select.customAction -> args.getString("hash")?.let(queue::select)?.let {
-                    select(it); true
-                } ?: false
-                PlaybackProtocol.remove.customAction -> args.getString("hash")?.let { hash ->
-                    val isCurrent = selected?.hash.equals(hash, ignoreCase = true)
+                PlaybackProtocol.play.customAction ->
+                    PlaybackProtocol.song(args)?.let { apply(queueCommands.insertAndPlay(it)) } ?: false
+                PlaybackProtocol.retry.customAction -> apply(queueCommands.retry(PlaybackProtocol.entryId(args), position()))
+                PlaybackProtocol.enqueue.customAction ->
+                    PlaybackProtocol.song(args)?.let { apply(queueCommands.enqueueNext(it)) } ?: false
+                PlaybackProtocol.select.customAction -> apply(queueCommands.selectEntry(PlaybackProtocol.entryId(args)))
+                PlaybackProtocol.seek.customAction -> if (args.containsKey("positionMs")) {
+                    apply(queueCommands.seek(PlaybackProtocol.entryId(args), args.getLong("positionMs")))
+                } else false
+                PlaybackProtocol.remove.customAction -> PlaybackProtocol.entryId(args)?.let { entryId ->
+                    val isCurrent = queue.current?.entryId == entryId
+                    if (queue.sessionType == QueueSessionType.FM && isCurrent && !queue.hasNext)
+                        return SessionResult(SessionError.ERROR_BAD_VALUE)
                     val start = player.playWhenReady && player.playbackState != Player.STATE_ENDED
-                    val successor = queue.remove(hash)
+                    val successor = queue.remove(entryId)
                     if (isCurrent) {
-                        if (successor != null) select(successor, start) else stopCurrent()
-                    } else publish()
+                        if (successor != null) playEntry(successor, start) else stopCurrent()
+                    } else { fm.check(); publish() }
                     true
                 } ?: false
                 PlaybackProtocol.clear.customAction -> { clearPlayback(); true }
@@ -372,8 +492,10 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onDestroy() {
+        fm.cancel()
         saveState()
         stateStore.close()
+        transfers.invalidate()
         requests.cancel()
         scope.cancel()
         session?.release()

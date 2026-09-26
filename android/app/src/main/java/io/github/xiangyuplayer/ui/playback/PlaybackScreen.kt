@@ -25,6 +25,9 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import coil.compose.SubcomposeAsyncImage
+import io.github.xiangyuplayer.playback.FmStatus
+import io.github.xiangyuplayer.playback.FmFeedbackStatus
+import io.github.xiangyuplayer.playback.QueueSessionType
 import io.github.xiangyuplayer.playback.PlaybackMode
 import io.github.xiangyuplayer.R
 import io.github.xiangyuplayer.data.remote.AvatarImages
@@ -39,7 +42,7 @@ fun PlaybackScreen(
     state: PlaybackUiState,
     onToggle: () -> Unit,
     onRetry: () -> Unit,
-    onSeek: (Song, Long) -> Unit,
+    onSeek: (String, Long) -> Unit,
     onPrevious: () -> Unit = {},
     onNext: () -> Unit = {},
     onQueue: () -> Unit = {},
@@ -47,10 +50,29 @@ fun PlaybackScreen(
     snackbar: SnackbarHostState = remember { SnackbarHostState() },
     lyrics: LyricsUiState = LyricsUiState(),
     onLyricsRetry: () -> Unit = {},
+    onFmRetry: () -> Unit = {},
+    onFmDislike: (String) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val song = state.song ?: return
     var showLyrics by rememberSaveable { mutableStateOf(false) }
+    var confirmFeedbackRetry by rememberSaveable(state.currentEntryId) { mutableStateOf(false) }
+    if (confirmFeedbackRetry) {
+        AlertDialog(
+            onDismissRequest = { confirmFeedbackRetry = false },
+            title = { Text(stringResource(R.string.fm_feedback_retry_title)) },
+            text = { Text(stringResource(R.string.fm_feedback_retry_detail)) },
+            confirmButton = {
+                TextButton(enabled = state.connected && state.canDislikeFm, onClick = {
+                    confirmFeedbackRetry = false
+                    state.currentEntryId?.let(onFmDislike)
+                }) { Text(stringResource(R.string.fm_feedback_resubmit)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmFeedbackRetry = false }) { Text(stringResource(R.string.fm_feedback_cancel)) }
+            },
+        )
+    }
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val images = remember { AvatarImages.create(context) }
@@ -72,7 +94,7 @@ fun PlaybackScreen(
                 FilterChip(selected = showLyrics, onClick = { showLyrics = true }, label = { Text(stringResource(R.string.lyrics_title)) })
             }
             if (showLyrics) {
-                key(song.hash) { LyricsPanel(state, lyrics, onLyricsRetry, onSeek) }
+                key(state.currentEntryId) { LyricsPanel(state, lyrics, onLyricsRetry, onSeek) }
             } else Surface(
                 modifier = Modifier.widthIn(max = 400.dp).fillMaxWidth().aspectRatio(1f)
                     .clip(RoundedCornerShape(24.dp)),
@@ -85,6 +107,28 @@ fun PlaybackScreen(
                 )
             }
             Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.sessionType == QueueSessionType.FM) {
+                    Text(stringResource(R.string.fm_mode), color = MaterialTheme.colorScheme.primary)
+                    fmMessage(state.fmStatus)?.let { Text(stringResource(it)) }
+                    if (state.ended && !state.hasNext) Text(stringResource(R.string.fm_exhausted))
+                    if (state.fmStatus == FmStatus.EMPTY || state.fmStatus == FmStatus.ERROR)
+                        TextButton(onClick = onFmRetry, enabled = state.connected) { Text(stringResource(R.string.fm_retry)) }
+                    val feedbackMessage = when (state.fmFeedbackStatus) {
+                        FmFeedbackStatus.SENDING -> R.string.fm_feedback_sending
+                        FmFeedbackStatus.SUCCESS -> R.string.fm_feedback_success
+                        FmFeedbackStatus.ERROR -> R.string.fm_feedback_error
+                        FmFeedbackStatus.IDLE -> null
+                    }
+                    feedbackMessage?.let { Text(stringResource(it)) }
+                    if (song.source == "personal_fm" && song.sourceId?.toLongOrNull()?.let { it > 0 } == true) {
+                        TextButton(enabled = state.connected && state.canDislikeFm,
+                            modifier = Modifier.heightIn(min = 48.dp), onClick = {
+                                if (state.fmFeedbackStatus == FmFeedbackStatus.ERROR && state.fmFeedbackEntryId == state.currentEntryId)
+                                    confirmFeedbackRetry = true
+                                else state.currentEntryId?.let(onFmDislike)
+                            }) { Text(stringResource(R.string.fm_dislike)) }
+                    }
+                }
                 Text(song.title, style = MaterialTheme.typography.headlineSmall)
                 if (song.artists.isNotEmpty()) Text(song.artists.joinToString(" / "),
                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -121,7 +165,8 @@ fun PlaybackScreen(
             }
             Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                PlaybackModeMenu(state.mode, state.connected, onMode)
+                if (state.sessionType == QueueSessionType.FM) Text(stringResource(R.string.fm_mode))
+                else PlaybackModeMenu(state.mode, state.connected, onMode)
                 TextButton(onClick = onQueue) { Text(stringResource(R.string.playback_queue)) }
             }
         }
@@ -129,10 +174,11 @@ fun PlaybackScreen(
 }
 
 @Composable
-private fun PlaybackProgress(state: PlaybackUiState, onSeek: (Song, Long) -> Unit, modifier: Modifier) {
-    val song = state.song ?: return
+private fun PlaybackProgress(state: PlaybackUiState, onSeek: (String, Long) -> Unit, modifier: Modifier) {
+    if (state.song == null) return
+    val entryId = state.currentEntryId ?: return
     val enabled = state.connected && state.seekable && state.failure == null && !state.resolving
-    var dragged by remember(song, state.durationMs, enabled) { mutableStateOf<Float?>(null) }
+    var dragged by remember(entryId, state.durationMs, enabled) { mutableStateOf<Float?>(null) }
     val duration = state.durationMs
     val fraction = dragged ?: if (duration != null) state.positionMs.toFloat() / duration else 0f
     val position = dragged?.let { (it * (duration ?: 0L)).toLong() } ?: state.positionMs
@@ -145,7 +191,7 @@ private fun PlaybackProgress(state: PlaybackUiState, onSeek: (Song, Long) -> Uni
             value = fraction.coerceIn(0f, 1f), enabled = enabled,
             onValueChange = { dragged = it },
             onValueChangeFinished = {
-                dragged?.let { value -> duration?.let { onSeek(song, (value * it).toLong()) } }
+                dragged?.let { value -> duration?.let { onSeek(entryId, (value * it).toLong()) } }
                 dragged = null
             },
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
@@ -182,8 +228,17 @@ private fun PlaybackScreenPreview() {
         PlaybackScreen(
             PlaybackUiState(
                 song = Song("preview", "很长的歌曲标题，也应该完整展示，不截断重要信息", listOf("第一位歌手", "第二位歌手", "第三位歌手")),
+                currentEntryId = "preview-entry",
                 connected = true, preview = true, positionMs = 12_000, durationMs = 60_000, seekable = true,
             ), onToggle = {}, onRetry = {}, onSeek = { _, _ -> }, onBack = {},
         )
     }
+}
+
+internal fun fmMessage(status: FmStatus): Int? = when (status) {
+    FmStatus.STARTING -> R.string.fm_starting
+    FmStatus.LOADING -> R.string.fm_loading
+    FmStatus.EMPTY -> R.string.fm_empty
+    FmStatus.ERROR -> R.string.fm_error
+    else -> null
 }

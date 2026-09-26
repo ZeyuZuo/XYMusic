@@ -1,0 +1,234 @@
+{
+  "kind": "sanitized_observation_not_raw_response",
+  "observed_on": "2026-09-26",
+  "upstream_commit": "590ff03b3b9aa766be6fd03bf4d09f9127482fc5",
+  "request_count": 2,
+  "platform": "android",
+  "endpoints": {
+    "/everyday/recommend": {
+      "http_status": 200,
+      "business_status": 1,
+      "error_code": 0,
+      "list_path": "data.song_list",
+      "observed_count": 30,
+      "fields": {
+        "hash": {
+          "present": 30,
+          "types": [
+            "string"
+          ],
+          "hash32": 30,
+          "distinct": 30
+        },
+        "songid": {
+          "present": 30,
+          "types": [
+            "number"
+          ]
+        },
+        "album_audio_id": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "mixsongid": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "album_id": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "album_name": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "songname": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "official_songname": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "ori_audio_name": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "filename": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "author_name": {
+          "present": 30,
+          "types": [
+            "string"
+          ]
+        },
+        "singerinfo": {
+          "present": 30,
+          "types": [
+            "object"
+          ]
+        },
+        "sizable_cover": {
+          "present": 30,
+          "types": [
+            "string"
+          ],
+          "http": 30,
+          "https": 0,
+          "sizePlaceholder": 30
+        },
+        "time_length": {
+          "present": 30,
+          "types": [
+            "number"
+          ],
+          "min": 159,
+          "max": 348
+        }
+      },
+      "absent_top_level_song_fields": [
+        "rec_song_info"
+      ],
+      "data_scalar_types": {
+        "cover_img_url": "string",
+        "creation_date": "string",
+        "song_list_size": "number",
+        "sub_title": "string"
+      },
+      "songid_vs_album_audio_id": {
+        "compared": 30,
+        "equal": 0
+      },
+      "duration_unit": "unverified; range only, no conversion asserted",
+      "values_not_retained": [
+        "creation_date",
+        "song_list_size"
+      ]
+    },
+    "/personal/fm": {
+      "http_status": 200,
+      "business_status": 1,
+      "error_code": 0,
+      "list_path": "data.song_list",
+      "observed_count": 5,
+      "fields": {
+        "hash": {
+          "present": 5,
+          "types": [
+            "string"
+          ],
+          "hash32": 5,
+          "distinct": 5
+        },
+        "songid": {
+          "present": 5,
+          "types": [
+            "number"
+          ]
+        },
+        "mixsongid": {
+          "present": 5,
+          "types": [
+            "string"
+          ]
+        },
+        "album_id": {
+          "present": 5,
+          "types": [
+            "string"
+          ]
+        },
+        "songname": {
+          "present": 5,
+          "types": [
+            "string"
+          ]
+        },
+        "official_songname": {
+          "present": 5,
+          "types": [
+            "string"
+          ]
+        },
+        "ori_audio_name": {
+          "present": 5,
+          "types": [
+            "string"
+          ]
+        },
+        "filename": {
+          "present": 5,
+          "types": [
+            "string"
+          ]
+        },
+        "author_name": {
+          "present": 5,
+          "types": [
+            "string"
+          ]
+        },
+        "singerinfo": {
+          "present": 5,
+          "types": [
+            "object"
+          ]
+        },
+        "time_length": {
+          "present": 5,
+          "types": [
+            "number"
+          ],
+          "min": 181,
+          "max": 294
+        },
+        "rec_song_info": {
+          "present": 5,
+          "types": [
+            "object"
+          ]
+        }
+      },
+      "absent_top_level_song_fields": [
+        "album_audio_id",
+        "album_name",
+        "sizable_cover"
+      ],
+      "data_scalar_types": {
+        "algorithm_id": "number",
+        "filter_num": "number",
+        "fresh_mode": "number",
+        "is_clean": "number",
+        "mode": "string",
+        "sync_point": "number"
+      },
+      "nested_goods_note": "First song only: relate_goods has 4 variants; each has hash, numeric album_audio_id, album_id, albumname and info.image/info.duration. Matching to the chosen hash is not verified.",
+      "duration_unit": "unverified; range only, no conversion asserted",
+      "values_not_retained": [
+        "algorithm_id",
+        "filter_num",
+        "fresh_mode",
+        "sync_point",
+        "is_clean"
+      ]
+    }
+  }
+}
