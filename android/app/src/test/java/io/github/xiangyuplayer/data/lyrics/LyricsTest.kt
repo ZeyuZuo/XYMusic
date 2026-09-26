@@ -7,6 +7,8 @@ import io.github.xiangyuplayer.domain.model.activeLyricIndex
 import io.github.xiangyuplayer.domain.model.lyricSeekPosition
 import java.util.Base64
 import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.*
@@ -48,6 +50,38 @@ class LyricsTest {
             val body = JsonParser.parseString(request.body.readUtf8()).asJsonObject
             assertEquals("lrc", body["fmt"].asString)
             assertEquals("test-key", body["accesskey"].asString)
+        }
+    }
+
+    @Test fun switchingSongsBypassesProxyCacheThatIgnoresPostBody() = runBlocking {
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                private var cachedDownload: String? = null
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.requestUrl!!.encodedPath == "/search/lyric") {
+                        val id = request.requestUrl!!.queryParameter("hash")
+                        return MockResponse().setBody("""{"status":200,"candidates":[{"id":"$id","accesskey":"synthetic-key"}]}""")
+                    }
+                    val id = JsonParser.parseString(request.body.readUtf8()).asJsonObject["id"].asString
+                    val content = Base64.getEncoder().encodeToString("[00:01.00]$id".toByteArray())
+                    val fresh = """{"status":200,"fmt":"lrc","content":"$content"}"""
+                    // Model the verified proxy behavior: same URL shares cached POST responses.
+                    if (request.getHeader("X-Apicache-Bypass") != null) return MockResponse().setBody(fresh)
+                    val result = cachedDownload ?: fresh.also { cachedDownload = it }
+                    return MockResponse().setBody(result)
+                }
+            }
+            val api = Retrofit.Builder().baseUrl(server.url("/"))
+                .addConverterFactory(GsonConverterFactory.create()).build().create(KuGouApi::class.java)
+            val repository = LyricsRepository(api)
+            for (hash in listOf("a".repeat(32), "b".repeat(32), "a".repeat(32))) {
+                assertEquals(listOf(LyricLine(1000, hash)), repository.load(hash))
+            }
+            repeat(6) {
+                val request = server.takeRequest()
+                assertEquals("1", request.getHeader("X-Apicache-Bypass"))
+                assertNull(request.requestUrl!!.queryParameter("accesskey"))
+            }
         }
     }
 

@@ -48,9 +48,12 @@ interface KuGouApi {
         @Query("free_part") freePart: Int? = null,
     ): JsonObject
 
+    @Headers("X-Apicache-Bypass: 1")
     @GET("search/lyric")
     suspend fun searchLyrics(@Query("hash") hash: String): JsonObject
 
+    // The proxy cache keys only by URL; lyric IDs and download keys remain in the body.
+    @Headers("X-Apicache-Bypass: 1")
     @POST("lyric")
     suspend fun lyrics(@Body body: Map<String, String>): JsonObject
 }
