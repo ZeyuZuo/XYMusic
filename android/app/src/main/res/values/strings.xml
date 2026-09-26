@@ -1,5 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="library_session_loading">正在读取登录状态…</string>
+    <string name="library_login">登录酷狗账号，查看云端歌单。</string>
+    <string name="library_read_only">当前支持查看歌单信息，歌曲列表与播放将在后续版本提供。</string>
+    <string name="library_liked">我喜欢</string>
+    <string name="library_created">自建歌单</string>
+    <string name="library_collected">收藏歌单</string>
+    <string name="library_other">其他歌单</string>
+    <string name="library_song_count">%1$d 首歌曲</string>
+    <string name="library_loaded_all">已显示全部 %1$d 个歌单</string>
+    <string name="library_loaded_partial">已加载 %1$d 个歌单，尚未加载完毕</string>
+    <string name="library_loading">正在加载歌单…</string>
+    <string name="library_loading_more">正在加载更多歌单…</string>
+    <string name="library_liked_pending">加载歌单后显示收藏数量</string>
+    <string name="library_liked_more">继续加载歌单以查找“我喜欢”</string>
+    <string name="library_liked_unidentified">未能确认“我喜欢”歌单，请刷新重试。</string>
+    <string name="library_category_empty">暂无歌单</string>
+    <string name="library_category_pending">已加载内容中暂无此类歌单</string>
+    <string name="library_stale">保留上次加载的歌单，内容可能不是最新的。</string>
+    <string name="library_load_failed">歌单加载失败，请检查网络与登录状态后重试。</string>
+    <string name="library_invalid_response">未能完整读取歌单，请重试。</string>
+    <string name="library_changed">歌单在加载期间发生变化，请刷新后重新加载。</string>
+    <string name="library_limit">歌单过多或分页异常，已停止加载；当前内容不完整。</string>
     <string name="fm_dislike">不喜欢这首推荐</string>
     <string name="fm_feedback_sending">正在提交不喜欢反馈…</string>
     <string name="fm_feedback_success">不喜欢反馈已提交</string>
@@ -17,9 +39,6 @@
     <string name="search_hint">歌曲、歌手或专辑</string>
     <string name="search_pending">在线搜索即将开放</string>
     <string name="search_pending_detail">连接酷狗账号后，在这里找到喜欢的音乐。</string>
-    <string name="library_title">你的音乐，慢慢收藏</string>
-    <string name="no_library">音乐库还是空的</string>
-    <string name="no_library_detail">未来的收藏、歌单和聆听记录，都在这里。</string>
     <string name="api_address">开发联调服务地址</string>
     <string name="api_address_hint">https://music.example.com/</string>
     <string name="api_description">当前开发版通过 KuGouMusicApi 联调，请填写开发服务地址。正式使用目标是安装即可登录，无需配置服务。</string>

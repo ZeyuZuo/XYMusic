@@ -10,6 +10,10 @@ import retrofit2.http.Headers
 /** Transport only. Map business errors and validated response fields in a repository. */
 interface KuGouApi {
     @Headers("X-Apicache-Bypass: 1")
+    @POST("user/playlist")
+    suspend fun userPlaylists(@Body body: io.github.xiangyuplayer.data.library.LibraryRequest): JsonObject
+
+    @Headers("X-Apicache-Bypass: 1")
     @POST("personal/fm")
     suspend fun dislikeFm(@Body body: io.github.xiangyuplayer.data.recommendation.FmDislikeRequest): JsonObject
 

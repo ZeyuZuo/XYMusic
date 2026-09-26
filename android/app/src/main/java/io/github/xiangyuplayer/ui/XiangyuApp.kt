@@ -11,24 +11,16 @@ import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
@@ -38,6 +30,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import io.github.xiangyuplayer.ui.library.LibraryScreen
+import io.github.xiangyuplayer.ui.library.LibraryViewModel
 import io.github.xiangyuplayer.ui.search.SearchScreen
 import io.github.xiangyuplayer.ui.search.SearchViewModel
 import io.github.xiangyuplayer.ui.playback.PlaybackViewModel
@@ -95,6 +90,14 @@ fun XiangyuApp(settings: SettingsStore) {
     val playback: PlaybackViewModel = viewModel()
     val playbackState by playback.state.collectAsStateWithLifecycle()
     var playbackVisible by rememberSaveable { mutableStateOf(false) }
+    val library: LibraryViewModel = viewModel(factory = LibraryViewModel.Factory)
+    val libraryState by library.state.collectAsStateWithLifecycle()
+    val libraryListState = key(libraryState.accountRevision) { rememberLazyListState() }
+    val libraryActive = destination == Destination.Library && !loginVisible && !playbackVisible
+    LifecycleResumeEffect(libraryActive) {
+        library.setVisible(libraryActive)
+        onPauseOrDispose { library.setVisible(false) }
+    }
     var queueVisible by rememberSaveable { mutableStateOf(false) }
     var openFmWhenReady by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(playbackState.sessionType, playbackState.fmStatus) {
@@ -195,36 +198,15 @@ fun XiangyuApp(settings: SettingsStore) {
             }
             return@Scaffold
         }
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(insets),
-            contentPadding = PaddingValues(24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            when (destination) {
-                Destination.Home -> Unit
-                Destination.Search -> Unit
-                Destination.Library -> {
-                    item { Text(stringResource(R.string.library_title), style = MaterialTheme.typography.headlineMedium) }
-                    item { EmptyCard(Icons.Default.Favorite, R.string.no_library, R.string.no_library_detail) }
-                }
-                Destination.Settings -> Unit
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyCard(icon: ImageVector, @StringRes title: Int, @StringRes detail: Int) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
-            Text(stringResource(title), style = MaterialTheme.typography.titleLarge)
-            Text(stringResource(detail), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        LibraryScreen(
+            state = libraryState,
+            listState = libraryListState,
+            modifier = Modifier.padding(insets),
+            onLogin = { loginVisible = true },
+            onRefresh = library::refresh,
+            onLoadMore = library::loadMore,
+            onRetry = library::retry,
+        )
     }
 }
 
